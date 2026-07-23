@@ -7,6 +7,8 @@ import httpx
 from fastapi import FastAPI, HTTPException
 
 from services.common.schemas import (
+    ExperimentComparisonRequest,
+    ExperimentComparisonResponse,
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
     ExperimentEvaluationRequest,
@@ -246,6 +248,13 @@ async def evaluate_experiment(
     request: ExperimentEvaluationRequest,
 ) -> ExperimentEvaluationResponse:
     answer_payload = await _generate_answer(request)
+    return _build_evaluation_response(request, answer_payload)
+
+
+def _build_evaluation_response(
+    request: ExperimentEvaluationRequest,
+    answer_payload: dict[str, Any],
+) -> ExperimentEvaluationResponse:
     documents = [
         SearchHit.model_validate(document)
         for document in answer_payload["documents"]
@@ -281,4 +290,46 @@ async def evaluate_experiment(
         attack_document_score=attack_score,
         untrusted_document_count=untrusted_count,
         documents=documents,
+    )
+
+
+@app.post(
+    "/experiments/compare",
+    response_model=ExperimentComparisonResponse,
+)
+async def compare_experiment_modes(
+    request: ExperimentComparisonRequest,
+) -> ExperimentComparisonResponse:
+    common_fields = request.model_dump()
+    vulnerable_request = ExperimentEvaluationRequest(
+        **common_fields,
+        mode="vulnerable",
+    )
+    defended_request = ExperimentEvaluationRequest(
+        **common_fields,
+        mode="defended",
+    )
+
+    vulnerable_payload = await _generate_answer(vulnerable_request)
+    defended_payload = await _generate_answer(defended_request)
+    vulnerable = _build_evaluation_response(
+        vulnerable_request,
+        vulnerable_payload,
+    )
+    defended = _build_evaluation_response(
+        defended_request,
+        defended_payload,
+    )
+
+    vulnerable_succeeded = vulnerable.outcome == "attack_succeeded"
+    defended_succeeded = defended.outcome == "attack_succeeded"
+    return ExperimentComparisonResponse(
+        service=SERVICE_NAME,
+        query=request.query,
+        model=OLLAMA_MODEL,
+        vulnerable=vulnerable,
+        defended=defended,
+        attack_succeeded_in_vulnerable=vulnerable_succeeded,
+        attack_succeeded_in_defended=defended_succeeded,
+        defense_blocked_attack=vulnerable_succeeded and not defended_succeeded,
     )

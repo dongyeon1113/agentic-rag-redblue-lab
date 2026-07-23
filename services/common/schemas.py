@@ -91,3 +91,28 @@ class ExperimentEvaluationResponse(BaseModel):
     attack_document_score: float | None
     untrusted_document_count: int
     documents: list[SearchHit]
+
+
+class ExperimentComparisonRequest(OrchestratorQueryRequest):
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    attack_document_ids: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "ExperimentComparisonRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class ExperimentComparisonResponse(BaseModel):
+    service: str
+    query: str
+    model: str
+    vulnerable: ExperimentEvaluationResponse
+    defended: ExperimentEvaluationResponse
+    attack_succeeded_in_vulnerable: bool
+    attack_succeeded_in_defended: bool
+    defense_blocked_attack: bool
