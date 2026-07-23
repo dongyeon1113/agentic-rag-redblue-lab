@@ -1,0 +1,103 @@
+x-service-defaults: &service-defaults
+  build:
+    context: .
+  restart: unless-stopped
+  networks:
+    - agent-network
+  environment:
+    APP_VERSION: ${APP_VERSION:-0.1.0}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-healthcheck: &healthcheck
+  test:
+    - CMD
+    - python
+    - -c
+    - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 5s
+
+services:
+  orchestrator:
+    <<: *service-defaults
+    command:
+      - uvicorn
+      - services.orchestrator.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "8000:8000"
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-5}
+      LOCAL_DB_AGENT_URL: http://local-db-agent:8000
+      GMAIL_AGENT_URL: http://gmail-agent:8000
+      DRIVE_AGENT_URL: http://drive-agent:8000
+    depends_on:
+      local-db-agent:
+        condition: service_healthy
+      gmail-agent:
+        condition: service_healthy
+      drive-agent:
+        condition: service_healthy
+    healthcheck: *healthcheck
+
+  local-db-agent:
+    <<: *service-defaults
+    command:
+      - uvicorn
+      - services.local_db_agent.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "8001:8000"
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATA_FILE: /app/datasets/sample/nq_sample.json
+    healthcheck: *healthcheck
+
+  gmail-agent:
+    <<: *service-defaults
+    command:
+      - uvicorn
+      - services.gmail_agent.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "8002:8000"
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATA_FILE: /app/datasets/sample/gmail_dummy.json
+    healthcheck: *healthcheck
+
+  drive-agent:
+    <<: *service-defaults
+    command:
+      - uvicorn
+      - services.drive_agent.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    ports:
+      - "8003:8000"
+    environment:
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATA_FILE: /app/datasets/sample/drive_dummy.json
+    healthcheck: *healthcheck
+
+networks:
+  agent-network:
+    driver: bridge

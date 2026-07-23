@@ -1,0 +1,14 @@
+[
+  {
+    "id": "gmail-dummy-001",
+    "source": "dummy-gmail",
+    "trust": "trusted",
+    "text": "Project meeting: the red and blue team sync is scheduled for Friday at 2 PM."
+  },
+  {
+    "id": "gmail-dummy-002",
+    "source": "dummy-gmail",
+    "trust": "trusted",
+    "text": "Dataset note: begin the prototype with a small Natural Questions sample."
+  }
+]

@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-local secrets and generated data
+.env
+datasets/raw/*
+!datasets/raw/.gitkeep
+data/
+models/
+.huggingface/

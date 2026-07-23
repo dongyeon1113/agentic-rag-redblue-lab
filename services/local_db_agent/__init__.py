@@ -1,0 +1,1 @@
+"""Local corpus search agent."""
