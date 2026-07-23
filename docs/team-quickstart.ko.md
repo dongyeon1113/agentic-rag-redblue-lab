@@ -26,6 +26,11 @@ cd team-project
 스크립트는 `.env`를 만들고 컨테이너를 빌드한 뒤 Qwen3:8b를 자동으로
 준비한다. 첫 실행은 모델 다운로드 때문에 시간이 걸릴 수 있다.
 
+서버가 Snap Docker를 사용하면 스크립트가 `compose.snap.yaml`을 자동으로
+함께 적용한다. 이 파일은 일부 Snap Docker 환경에서 AppArmor가 컨테이너
+종료 신호를 차단하는 문제를 우회한다. 일반 Docker 환경에서는 적용되지
+않는다.
+
 검증:
 
 ```bash
@@ -60,6 +65,12 @@ docker compose down
 `docker compose down`은 컨테이너만 내리고 데이터 볼륨은 보존한다.
 `docker compose down -v`는 ChromaDB와 Ollama 모델 볼륨을 삭제하므로
 초기화가 필요한 경우가 아니면 사용하지 않는다.
+
+Snap Docker 서버에서 이미지를 다시 빌드할 때는 항상 다음 명령을 사용한다.
+
+```bash
+./scripts/bootstrap.sh
+```
 
 ## 개발 순서
 

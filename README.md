@@ -43,7 +43,9 @@ internet.
 
 This creates `.env`, builds the containers, starts the stack, and automatically
 pulls the configured Ollama model. The first run downloads Qwen3:8b and can take
-several minutes.
+several minutes. The script also detects Snap Docker and applies
+`compose.snap.yaml`, which works around a Snap AppArmor bug that can otherwise
+block container stop and restart operations.
 
 Check readiness:
 
@@ -90,6 +92,11 @@ docker compose down
 
 Do not run `docker compose down -v` unless persistent Chroma data and downloaded
 Ollama models should be deleted.
+
+On a Snap Docker host, use `./scripts/bootstrap.sh` for builds and updates. The
+Snap compatibility override disables AppArmor confinement for these containers
+only. A standard Docker Engine installation is preferred for a long-running
+shared server.
 
 ## Tests
 

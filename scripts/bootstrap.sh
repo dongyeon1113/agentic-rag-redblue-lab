@@ -15,8 +15,15 @@ if [[ ! -f .env ]]; then
   echo "Created .env from .env.example."
 fi
 
-docker compose up -d --build
-docker compose ps
+compose_files=(-f compose.yaml)
+docker_root_dir="$(docker info --format '{{.DockerRootDir}}')"
+if [[ "$docker_root_dir" == /var/snap/docker/* ]]; then
+  compose_files+=(-f compose.snap.yaml)
+  echo "Detected Snap Docker; applying the AppArmor compatibility override."
+fi
+
+docker compose "${compose_files[@]}" up -d --build
+docker compose "${compose_files[@]}" ps
 
 echo
 echo "Run: python3 scripts/smoke_test.py"
