@@ -7,7 +7,7 @@ WORKDIR /app
 
 RUN addgroup --system app \
     && adduser --system --ingroup app app \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data/chroma \
     && chown -R app:app /app/data
 
 COPY requirements.txt .
