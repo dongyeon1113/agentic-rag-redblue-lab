@@ -7,6 +7,8 @@ import httpx
 from fastapi import FastAPI, HTTPException
 
 from services.common.schemas import (
+    ExperimentDocumentRequest,
+    ExperimentDocumentResponse,
     HealthResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
@@ -108,6 +110,38 @@ async def model() -> dict[str, Any]:
         "installed": OLLAMA_MODEL in installed_models,
         "available_models": installed_models,
     }
+
+
+@app.post(
+    "/experiments/documents",
+    response_model=ExperimentDocumentResponse,
+    status_code=201,
+)
+async def create_experiment_document(
+    request: ExperimentDocumentRequest,
+) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client,
+                "POST",
+                f"{AGENT_URLS['local_db']}/documents",
+                json=request.model_dump(),
+            )
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", exc.response.text)
+        except ValueError:
+            detail = exc.response.text
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=detail,
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Local DB agent is unavailable: {exc}",
+        ) from exc
 
 
 async def _query_agents(

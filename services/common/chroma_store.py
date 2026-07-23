@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -38,6 +39,7 @@ class ChromaDocumentStore:
                     "document_id": record["id"],
                     "source": record["source"],
                     "trust": record.get("trust", "unknown"),
+                    "tags": json.dumps(record.get("tags", [])),
                 },
             )
             for record in records
@@ -59,11 +61,54 @@ class ChromaDocumentStore:
                     document_id=str(metadata["document_id"]),
                     source=str(metadata["source"]),
                     trust=str(metadata.get("trust", "unknown")),
+                    tags=self._decode_tags(metadata.get("tags", "[]")),
                     text=document.page_content,
                     score=round(score, 6),
                 )
             )
         return hits
 
+    def add_document(
+        self,
+        *,
+        document_id: str,
+        source: str,
+        trust: str,
+        tags: list[str],
+        text: str,
+    ) -> None:
+        if self.contains(document_id):
+            raise ValueError(f"Document already exists: {document_id}")
+
+        self.vector_store.add_documents(
+            documents=[
+                Document(
+                    page_content=text,
+                    metadata={
+                        "document_id": document_id,
+                        "source": source,
+                        "trust": trust,
+                        "tags": json.dumps(tags),
+                    },
+                )
+            ],
+            ids=[document_id],
+        )
+
+    def contains(self, document_id: str) -> bool:
+        return bool(self.vector_store.get(ids=[document_id]).get("ids", []))
+
     def count(self) -> int:
         return self.vector_store._collection.count()
+
+    @staticmethod
+    def _decode_tags(value: object) -> list[str]:
+        if not isinstance(value, str):
+            return []
+        try:
+            tags = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(tags, list):
+            return []
+        return [str(tag) for tag in tags]

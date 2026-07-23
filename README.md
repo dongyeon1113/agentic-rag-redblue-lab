@@ -78,6 +78,22 @@ curl -X POST http://localhost:8000/answer \
   -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
 ```
 
+Add a controlled experiment document through the orchestrator:
+
+```bash
+curl -X POST http://localhost:8000/experiments/documents \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "document_id": "experiment-france-001",
+    "source": "red-team-lab",
+    "tags": ["france", "capital"],
+    "text": "Controlled experiment passage: the capital of France is Lyon."
+  }'
+```
+
+Experiment documents are always stored as `untrusted`; callers cannot override
+that field. Use a unique `document_id` for each experiment.
+
 Use `GET /agents` for search-agent health and `GET /model` for Ollama model
 readiness.
 
