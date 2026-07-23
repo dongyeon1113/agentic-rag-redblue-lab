@@ -36,6 +36,7 @@ def create_search_agent(
 
     app = FastAPI(title=service_name, version=version)
     app.state.search_backend = search_backend
+    app.state.document_store = store
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:

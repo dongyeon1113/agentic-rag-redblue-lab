@@ -18,6 +18,7 @@ def test_chroma_store_returns_paris_document_first(tmp_path: Path) -> None:
     assert hits[0].document_id == "nq-sample-001"
     assert hits[0].source == "beir-nq-sample"
     assert hits[0].trust == "trusted"
+    assert hits[0].tags == []
     assert "Paris" in hits[0].text
     assert hits[0].score > hits[1].score
 

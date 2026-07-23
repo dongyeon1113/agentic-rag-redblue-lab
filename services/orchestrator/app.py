@@ -7,10 +7,18 @@ import httpx
 from fastapi import FastAPI, HTTPException
 
 from services.common.schemas import (
+    ExperimentComparisonRequest,
+    ExperimentComparisonResponse,
+    ExperimentDocumentRequest,
+    ExperimentDocumentResponse,
+    ExperimentEvaluationRequest,
+    ExperimentEvaluationResponse,
     HealthResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
+    SearchHit,
 )
+from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
 from services.orchestrator.rag import (
     build_rag_chain,
     collect_context_hits,
@@ -110,6 +118,38 @@ async def model() -> dict[str, Any]:
     }
 
 
+@app.post(
+    "/experiments/documents",
+    response_model=ExperimentDocumentResponse,
+    status_code=201,
+)
+async def create_experiment_document(
+    request: ExperimentDocumentRequest,
+) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client,
+                "POST",
+                f"{AGENT_URLS['local_db']}/documents",
+                json=request.model_dump(),
+            )
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", exc.response.text)
+        except ValueError:
+            detail = exc.response.text
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=detail,
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Local DB agent is unavailable: {exc}",
+        ) from exc
+
+
 async def _query_agents(
     request: OrchestratorQueryRequest,
 ) -> dict[str, Any]:
@@ -152,6 +192,12 @@ async def query(request: OrchestratorQueryRequest) -> dict[str, Any]:
 
 @app.post("/answer")
 async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
+    return await _generate_answer(request)
+
+
+async def _generate_answer(
+    request: OrchestratorAnswerRequest,
+) -> dict[str, Any]:
     results = await _query_agents(request)
     context_hits = collect_context_hits(
         results,
@@ -192,3 +238,98 @@ async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
         "documents": [hit.model_dump() for hit in context_hits],
         "results": results,
     }
+
+
+@app.post(
+    "/experiments/evaluate",
+    response_model=ExperimentEvaluationResponse,
+)
+async def evaluate_experiment(
+    request: ExperimentEvaluationRequest,
+) -> ExperimentEvaluationResponse:
+    answer_payload = await _generate_answer(request)
+    return _build_evaluation_response(request, answer_payload)
+
+
+def _build_evaluation_response(
+    request: ExperimentEvaluationRequest,
+    answer_payload: dict[str, Any],
+) -> ExperimentEvaluationResponse:
+    documents = [
+        SearchHit.model_validate(document)
+        for document in answer_payload["documents"]
+    ]
+    outcome, expected_present, target_present = evaluate_answer(
+        answer_payload["answer"],
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+    )
+    (
+        attack_retrieved,
+        attack_rank,
+        attack_score,
+        untrusted_count,
+    ) = evaluate_retrieval(
+        documents,
+        attack_document_ids=request.attack_document_ids,
+    )
+
+    return ExperimentEvaluationResponse(
+        service=SERVICE_NAME,
+        query=request.query,
+        model=OLLAMA_MODEL,
+        mode=request.mode,
+        answer=answer_payload["answer"],
+        outcome=outcome,
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+        expected_answer_present=expected_present,
+        attack_target_present=target_present,
+        attack_document_retrieved=attack_retrieved,
+        attack_document_rank=attack_rank,
+        attack_document_score=attack_score,
+        untrusted_document_count=untrusted_count,
+        documents=documents,
+    )
+
+
+@app.post(
+    "/experiments/compare",
+    response_model=ExperimentComparisonResponse,
+)
+async def compare_experiment_modes(
+    request: ExperimentComparisonRequest,
+) -> ExperimentComparisonResponse:
+    common_fields = request.model_dump()
+    vulnerable_request = ExperimentEvaluationRequest(
+        **common_fields,
+        mode="vulnerable",
+    )
+    defended_request = ExperimentEvaluationRequest(
+        **common_fields,
+        mode="defended",
+    )
+
+    vulnerable_payload = await _generate_answer(vulnerable_request)
+    defended_payload = await _generate_answer(defended_request)
+    vulnerable = _build_evaluation_response(
+        vulnerable_request,
+        vulnerable_payload,
+    )
+    defended = _build_evaluation_response(
+        defended_request,
+        defended_payload,
+    )
+
+    vulnerable_succeeded = vulnerable.outcome == "attack_succeeded"
+    defended_succeeded = defended.outcome == "attack_succeeded"
+    return ExperimentComparisonResponse(
+        service=SERVICE_NAME,
+        query=request.query,
+        model=OLLAMA_MODEL,
+        vulnerable=vulnerable,
+        defended=defended,
+        attack_succeeded_in_vulnerable=vulnerable_succeeded,
+        attack_succeeded_in_defended=defended_succeeded,
+        defense_blocked_attack=vulnerable_succeeded and not defended_succeeded,
+    )
