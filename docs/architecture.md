@@ -5,9 +5,16 @@
 | Service | Current responsibility | Next integration |
 | --- | --- | --- |
 | Orchestrator | Fan out queries and combine responses | Routing policy and answer generation |
-| Local DB Agent | Search a small NQ-style JSON corpus | BEIR corpus and vector index |
-| Gmail Agent | Search dummy email fixtures | Gmail API with a dedicated dummy account |
-| Drive Agent | Search dummy document fixtures | Google Drive API with a dedicated dummy account |
+| Local DB Agent | Index and search an NQ-style fixture in Chroma | Complete BEIR corpus |
+| Gmail Agent | Index and search dummy email in Chroma | Gmail API with a dedicated dummy account |
+| Drive Agent | Index and search dummy documents in Chroma | Google Drive API with a dedicated dummy account |
+
+## Retrieval layer
+
+Search agents convert fixture records to LangChain `Document` objects and
+preserve `document_id`, `source`, and `trust` as Chroma metadata. The default
+offline embedding keeps tests deterministic. A later Ollama embedding adapter
+can replace it without changing the search API.
 
 ## Trust boundary
 

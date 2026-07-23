@@ -1,0 +1,33 @@
+import math
+from hashlib import blake2b
+
+from langchain_core.embeddings import Embeddings
+
+from services.common.search import tokenize
+
+
+class DeterministicHashEmbeddings(Embeddings):
+    """Small offline embedding used for tests and the initial lab baseline."""
+
+    def __init__(self, dimensions: int = 256) -> None:
+        if dimensions < 1:
+            raise ValueError("dimensions must be positive")
+        self.dimensions = dimensions
+
+    def _embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
+        for token in tokenize(text):
+            digest = blake2b(token.encode("utf-8"), digest_size=8).digest()
+            index = int.from_bytes(digest, "big") % self.dimensions
+            vector[index] += 1.0
+
+        magnitude = math.sqrt(sum(value * value for value in vector))
+        if magnitude:
+            vector = [value / magnitude for value in vector]
+        return vector
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)

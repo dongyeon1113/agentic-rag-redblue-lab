@@ -8,13 +8,15 @@ defenses across a small multi-agent RAG system.
 The first milestone provides four independently deployable services:
 
 - `orchestrator`: routes a query to selected search agents.
-- `local-db-agent`: searches a small BEIR NQ-style sample.
+- `local-db-agent`: searches a small BEIR NQ-style sample in Chroma.
 - `gmail-agent`: searches non-sensitive dummy email.
 - `drive-agent`: searches non-sensitive dummy Drive documents.
 
-The Gmail and Drive services use local JSON fixtures for now. Real Google API
-credentials and the complete BEIR datasets are intentionally not part of this
-milestone.
+Each search agent indexes its local JSON fixture into a LangChain Chroma vector
+store. The initial offline embedding is deterministic so tests do not download
+model weights. Ollama embeddings and Qwen answer generation are the next
+integration. Real Google API credentials and complete BEIR datasets are
+intentionally not part of this milestone.
 
 ## Architecture
 
@@ -70,6 +72,10 @@ defenses/       Blue-team adapters and evaluation notes
 docs/           Architecture and experiment documentation
 tests/          Unit and API tests
 ```
+
+Set `SEARCH_BACKEND=lexical` to compare the original keyword baseline against
+Chroma retrieval. Persistent Chroma state is written below `data/`, which is
+excluded from Git.
 
 Never commit `.env`, OAuth credentials, API tokens, private keys, downloaded
 BEIR corpora, or model weights.

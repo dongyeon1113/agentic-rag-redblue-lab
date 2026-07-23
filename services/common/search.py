@@ -46,17 +46,27 @@ def lexical_score(query: str, document: str) -> float:
     return round(overlap / sum(query_counts.values()), 6)
 
 
+def load_json_documents(data_file: Path) -> list[dict[str, Any]]:
+    with data_file.open(encoding="utf-8") as file:
+        documents = json.load(file)
+    if not isinstance(documents, list):
+        raise ValueError(f"{data_file} must contain a JSON list")
+
+    required_fields = {"id", "source", "text"}
+    for index, document in enumerate(documents):
+        if not isinstance(document, dict):
+            raise ValueError(f"{data_file} item {index} must be an object")
+        missing = required_fields.difference(document)
+        if missing:
+            fields = ", ".join(sorted(missing))
+            raise ValueError(f"{data_file} item {index} is missing: {fields}")
+    return documents
+
+
 class JsonDocumentStore:
     def __init__(self, data_file: Path) -> None:
         self.data_file = data_file
-        self.documents = self._load()
-
-    def _load(self) -> list[dict[str, Any]]:
-        with self.data_file.open(encoding="utf-8") as file:
-            documents = json.load(file)
-        if not isinstance(documents, list):
-            raise ValueError(f"{self.data_file} must contain a JSON list")
-        return documents
+        self.documents = load_json_documents(data_file)
 
     def search(self, query: str, limit: int) -> list[SearchHit]:
         ranked: list[SearchHit] = []

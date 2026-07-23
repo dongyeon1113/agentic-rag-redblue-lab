@@ -5,7 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN addgroup --system app \
+    && adduser --system --ingroup app app \
+    && mkdir -p /app/data \
+    && chown -R app:app /app/data
 
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt

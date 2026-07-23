@@ -62,6 +62,11 @@ services:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATA_FILE: /app/datasets/sample/nq_sample.json
+      SEARCH_BACKEND: chroma
+      CHROMA_COLLECTION: local-db
+      CHROMA_PERSIST_DIRECTORY: /app/data/chroma
+    volumes:
+      - local-db-chroma:/app/data/chroma
     healthcheck: *healthcheck
 
   gmail-agent:
@@ -79,6 +84,11 @@ services:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATA_FILE: /app/datasets/sample/gmail_dummy.json
+      SEARCH_BACKEND: chroma
+      CHROMA_COLLECTION: gmail
+      CHROMA_PERSIST_DIRECTORY: /app/data/chroma
+    volumes:
+      - gmail-chroma:/app/data/chroma
     healthcheck: *healthcheck
 
   drive-agent:
@@ -96,8 +106,18 @@ services:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATA_FILE: /app/datasets/sample/drive_dummy.json
+      SEARCH_BACKEND: chroma
+      CHROMA_COLLECTION: drive
+      CHROMA_PERSIST_DIRECTORY: /app/data/chroma
+    volumes:
+      - drive-chroma:/app/data/chroma
     healthcheck: *healthcheck
 
 networks:
   agent-network:
     driver: bridge
+
+volumes:
+  local-db-chroma:
+  gmail-chroma:
+  drive-chroma:
