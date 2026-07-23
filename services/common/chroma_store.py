@@ -64,3 +64,6 @@ class ChromaDocumentStore:
                 )
             )
         return hits
+
+    def count(self) -> int:
+        return self.vector_store._collection.count()

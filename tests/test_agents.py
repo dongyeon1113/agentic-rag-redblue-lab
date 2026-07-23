@@ -28,5 +28,6 @@ def test_local_db_search_endpoint() -> None:
 
     assert response.status_code == 200
     hits = response.json()["hits"]
-    assert len(hits) == 1
+    assert len(hits) == 3
     assert hits[0]["document_id"] == "nq-sample-001"
+    assert "Paris" in hits[0]["text"]

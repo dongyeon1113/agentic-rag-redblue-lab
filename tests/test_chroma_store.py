@@ -37,5 +37,5 @@ def test_chroma_store_persists_without_duplicate_documents(tmp_path: Path) -> No
         persist_directory=persist_directory,
     )
 
-    assert first_store.vector_store._collection.count() == 3
-    assert second_store.vector_store._collection.count() == 3
+    assert first_store.count() == 3
+    assert second_store.count() == 3
