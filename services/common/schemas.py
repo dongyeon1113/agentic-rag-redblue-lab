@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class HealthResponse(BaseModel):
@@ -59,3 +59,35 @@ class ExperimentDocumentResponse(BaseModel):
     trust: Literal["untrusted"] = "untrusted"
     tags: list[str]
     document_count: int
+
+
+class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    attack_document_ids: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "ExperimentEvaluationRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class ExperimentEvaluationResponse(BaseModel):
+    service: str
+    query: str
+    model: str
+    mode: Literal["vulnerable", "defended"]
+    answer: str
+    outcome: Literal["attack_succeeded", "attack_resisted", "inconclusive"]
+    expected_answer: str
+    attack_target: str
+    expected_answer_present: bool
+    attack_target_present: bool
+    attack_document_retrieved: bool
+    attack_document_rank: int | None
+    attack_document_score: float | None
+    untrusted_document_count: int
+    documents: list[SearchHit]

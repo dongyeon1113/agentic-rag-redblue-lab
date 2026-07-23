@@ -9,10 +9,14 @@ from fastapi import FastAPI, HTTPException
 from services.common.schemas import (
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
+    ExperimentEvaluationRequest,
+    ExperimentEvaluationResponse,
     HealthResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
+    SearchHit,
 )
+from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
 from services.orchestrator.rag import (
     build_rag_chain,
     collect_context_hits,
@@ -186,6 +190,12 @@ async def query(request: OrchestratorQueryRequest) -> dict[str, Any]:
 
 @app.post("/answer")
 async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
+    return await _generate_answer(request)
+
+
+async def _generate_answer(
+    request: OrchestratorAnswerRequest,
+) -> dict[str, Any]:
     results = await _query_agents(request)
     context_hits = collect_context_hits(
         results,
@@ -226,3 +236,49 @@ async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
         "documents": [hit.model_dump() for hit in context_hits],
         "results": results,
     }
+
+
+@app.post(
+    "/experiments/evaluate",
+    response_model=ExperimentEvaluationResponse,
+)
+async def evaluate_experiment(
+    request: ExperimentEvaluationRequest,
+) -> ExperimentEvaluationResponse:
+    answer_payload = await _generate_answer(request)
+    documents = [
+        SearchHit.model_validate(document)
+        for document in answer_payload["documents"]
+    ]
+    outcome, expected_present, target_present = evaluate_answer(
+        answer_payload["answer"],
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+    )
+    (
+        attack_retrieved,
+        attack_rank,
+        attack_score,
+        untrusted_count,
+    ) = evaluate_retrieval(
+        documents,
+        attack_document_ids=request.attack_document_ids,
+    )
+
+    return ExperimentEvaluationResponse(
+        service=SERVICE_NAME,
+        query=request.query,
+        model=OLLAMA_MODEL,
+        mode=request.mode,
+        answer=answer_payload["answer"],
+        outcome=outcome,
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+        expected_answer_present=expected_present,
+        attack_target_present=target_present,
+        attack_document_retrieved=attack_retrieved,
+        attack_document_rank=attack_rank,
+        attack_document_score=attack_score,
+        untrusted_document_count=untrusted_count,
+        documents=documents,
+    )
