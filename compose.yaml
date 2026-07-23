@@ -21,12 +21,12 @@ x-healthcheck: &healthcheck
 
 services:
   ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
     restart: unless-stopped
     networks:
       - agent-network
     ports:
-      - "11434:11434"
+      - "${HOST_BIND:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama-models:/root/.ollama
     deploy:
@@ -47,6 +47,20 @@ services:
       retries: 10
       start_period: 10s
 
+  ollama-model-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    restart: "no"
+    networks:
+      - agent-network
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command:
+      - pull
+      - ${OLLAMA_MODEL:-qwen3:8b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   orchestrator:
     <<: *service-defaults
     command:
@@ -57,7 +71,7 @@ services:
       - --port
       - "8000"
     ports:
-      - "8000:8000"
+      - "${HOST_BIND:-127.0.0.1}:${ORCHESTRATOR_PORT:-8000}:8000"
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -70,8 +84,8 @@ services:
       GMAIL_AGENT_URL: http://gmail-agent:8000
       DRIVE_AGENT_URL: http://drive-agent:8000
     depends_on:
-      ollama:
-        condition: service_healthy
+      ollama-model-init:
+        condition: service_completed_successfully
       local-db-agent:
         condition: service_healthy
       gmail-agent:
@@ -90,7 +104,7 @@ services:
       - --port
       - "8000"
     ports:
-      - "8001:8000"
+      - "${HOST_BIND:-127.0.0.1}:${LOCAL_DB_PORT:-8001}:8000"
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -112,7 +126,7 @@ services:
       - --port
       - "8000"
     ports:
-      - "8002:8000"
+      - "${HOST_BIND:-127.0.0.1}:${GMAIL_PORT:-8002}:8000"
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -134,7 +148,7 @@ services:
       - --port
       - "8000"
     ports:
-      - "8003:8000"
+      - "${HOST_BIND:-127.0.0.1}:${DRIVE_PORT:-8003}:8000"
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

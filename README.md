@@ -1,60 +1,74 @@
 # Agentic RAG Red/Blue Lab
 
-Controlled research environment for testing retrieval poisoning attacks and
-defenses across a small multi-agent RAG system.
+Controlled research environment for retrieval-poisoning and defense experiments
+in a small multi-agent RAG system.
 
-## Current milestone
-
-The first milestone provides four independently deployable services:
-
-- `orchestrator`: routes a query to selected search agents.
-- `local-db-agent`: searches a small BEIR NQ-style sample in Chroma.
-- `gmail-agent`: searches non-sensitive dummy email.
-- `drive-agent`: searches non-sensitive dummy Drive documents.
-
-Each search agent indexes its local JSON fixture into a LangChain Chroma vector
-store. The initial offline embedding is deterministic so tests do not download
-model weights. The orchestrator uses LangChain `ChatOllama` with `qwen3:8b` to
-generate a final answer from retrieved passages. Real Google API credentials
-and complete BEIR datasets are intentionally not part of this milestone.
-
-## Architecture
+## Current system
 
 ```text
 Client
   |
   v
-Orchestrator :8000
-  |--------- Local DB Agent :8001
-  |--------- Gmail Agent    :8002
-  `--------- Drive Agent    :8003
+Orchestrator :8000 ---- Ollama / Qwen3:8b
+  |--------- Local DB Agent :8001 ---- ChromaDB
+  |--------- Gmail Agent    :8002 ---- ChromaDB
+  `--------- Drive Agent    :8003 ---- ChromaDB
 ```
 
-## Run with Docker
+- The orchestrator fans out a query and generates a cited RAG answer.
+- The Local DB agent indexes a small BEIR NQ-style fixture.
+- Gmail and Drive agents index non-sensitive dummy fixtures.
+- Each search agent has an independent persistent Chroma volume.
+- `vulnerable` mode uses trusted and untrusted passages.
+- `defended` mode removes untrusted passages before answer generation.
+
+Real Google credentials, private data, and complete research datasets are not
+included.
+
+## Requirements
+
+- Linux host with Docker Engine and Docker Compose
+- NVIDIA GPU, driver, and NVIDIA Container Toolkit
+- User access to the Docker daemon
+
+The default deployment binds all host ports to `127.0.0.1`. Use an SSH tunnel
+for remote access; do not expose this unauthenticated lab directly to the
+internet.
+
+## First run
 
 ```bash
-cp .env.example .env
-sudo docker compose up -d --build
-sudo docker compose ps
+./scripts/bootstrap.sh
 ```
 
-Check the complete topology:
+This creates `.env`, builds the containers, starts the stack, and automatically
+pulls the configured Ollama model. The first run downloads Qwen3:8b and can take
+several minutes.
+
+Check readiness:
 
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/agents
+docker compose ps
+python3 scripts/smoke_test.py
+```
+
+The five long-running services should report `healthy`. The
+`ollama-model-init` service is expected to complete and exit successfully after
+checking or downloading the model.
+
+Open the orchestrator API documentation at `http://localhost:8000/docs`.
+
+## API examples
+
+Inspect retrieval:
+
+```bash
 curl -X POST http://localhost:8000/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is the capital of France?","sources":["local_db"]}'
 ```
 
-Pull the configured model once Ollama is running:
-
-```bash
-docker compose exec ollama ollama pull qwen3:8b
-```
-
-Generate a final RAG answer:
+Generate a RAG answer:
 
 ```bash
 curl -X POST http://localhost:8000/answer \
@@ -62,37 +76,46 @@ curl -X POST http://localhost:8000/answer \
   -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
 ```
 
-Use `GET /model` to check whether Ollama is reachable and the configured model
-has been pulled.
+Use `GET /agents` for search-agent health and `GET /model` for Ollama model
+readiness.
 
-Stop the services:
+## Operations
 
 ```bash
-sudo docker compose down
+docker compose ps
+docker compose logs -f orchestrator
+docker compose restart
+docker compose down
 ```
 
-## Run tests without Docker
+Do not run `docker compose down -v` unless persistent Chroma data and downloaded
+Ollama models should be deleted.
+
+## Tests
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest -q
 ```
+
+Pull requests and pushes to `main` or `codex/**` run the same tests in GitHub
+Actions.
 
 ## Repository layout
 
 ```text
-services/       Four HTTP services and shared search code
+services/       HTTP services and shared retrieval code
 datasets/       Small committed fixtures only
-attacks/        Red-team scenarios and reproducible payloads
+attacks/        Controlled red-team experiments
 defenses/       Blue-team adapters and evaluation notes
-docs/           Architecture and experiment documentation
+docs/           Architecture and team runbooks
+scripts/        Bootstrap and deployment validation
 tests/          Unit and API tests
 ```
 
-Set `SEARCH_BACKEND=lexical` to compare the original keyword baseline against
-Chroma retrieval. Persistent Chroma state is written below `data/`, which is
-excluded from Git.
+The Korean team runbook is at
+[`docs/team-quickstart.ko.md`](docs/team-quickstart.ko.md).
 
 Never commit `.env`, OAuth credentials, API tokens, private keys, downloaded
-BEIR corpora, or model weights.
+corpora, model weights, real email, or real Drive documents.
