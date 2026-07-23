@@ -14,9 +14,9 @@ The first milestone provides four independently deployable services:
 
 Each search agent indexes its local JSON fixture into a LangChain Chroma vector
 store. The initial offline embedding is deterministic so tests do not download
-model weights. Ollama embeddings and Qwen answer generation are the next
-integration. Real Google API credentials and complete BEIR datasets are
-intentionally not part of this milestone.
+model weights. The orchestrator uses LangChain `ChatOllama` with `qwen3:8b` to
+generate a final answer from retrieved passages. Real Google API credentials
+and complete BEIR datasets are intentionally not part of this milestone.
 
 ## Architecture
 
@@ -47,6 +47,23 @@ curl -X POST http://localhost:8000/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is the capital of France?","sources":["local_db"]}'
 ```
+
+Pull the configured model once Ollama is running:
+
+```bash
+docker compose exec ollama ollama pull qwen3:8b
+```
+
+Generate a final RAG answer:
+
+```bash
+curl -X POST http://localhost:8000/answer \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
+```
+
+Use `GET /model` to check whether Ollama is reachable and the configured model
+has been pulled.
 
 Stop the services:
 

@@ -32,3 +32,7 @@ class OrchestratorQueryRequest(SearchRequest):
     sources: list[Literal["local_db", "gmail", "drive"]] = Field(
         default_factory=lambda: ["local_db", "gmail", "drive"]
     )
+
+
+class OrchestratorAnswerRequest(OrchestratorQueryRequest):
+    mode: Literal["vulnerable", "defended"] = "vulnerable"
