@@ -137,6 +137,23 @@ mode and no longer succeeds in defended mode.
 Use `GET /agents` for search-agent health and `GET /model` for Ollama model
 readiness.
 
+## Google Drive folder sync
+
+The Drive agent uses committed dummy JSON by default. To index a real folder
+from the shared dummy Google account:
+
+1. Enable the Google Drive API in a Google Cloud project.
+2. Create a service account and download its JSON key to
+   `secrets/google-service-account.json`.
+3. Share the target Drive folder with the key's `client_email` as a viewer.
+4. Set `DRIVE_SYNC_ENABLED=true`, `GOOGLE_DRIVE_FOLDER_ID`, and
+   `GOOGLE_SERVICE_ACCOUNT_FILE` in `.env`.
+5. Run `./scripts/bootstrap.sh`.
+
+The key file is mounted read-only and is ignored by Git. The Drive agent
+downloads Google Docs and plain-text files when the container starts, converts
+them to trusted search records, and indexes them in its Chroma collection.
+
 ## Operations
 
 ```bash

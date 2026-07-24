@@ -16,6 +16,21 @@ if [[ ! -f .env ]]; then
 fi
 
 compose_files=(-f compose.yaml)
+if grep -Eq '^DRIVE_SYNC_ENABLED=(1|true|yes)$' .env; then
+  if [[ -z "${GOOGLE_SERVICE_ACCOUNT_FILE:-}" ]]; then
+    google_key="$(
+      sed -n 's/^GOOGLE_SERVICE_ACCOUNT_FILE=//p' .env | tail -n 1
+    )"
+  else
+    google_key="$GOOGLE_SERVICE_ACCOUNT_FILE"
+  fi
+  if [[ -z "$google_key" || ! -f "$google_key" ]]; then
+    echo "Google Drive sync is enabled, but GOOGLE_SERVICE_ACCOUNT_FILE is missing." >&2
+    exit 1
+  fi
+  compose_files+=(-f compose.google.yaml)
+  echo "Google Drive folder sync enabled."
+fi
 docker_root_dir="$(docker info --format '{{.DockerRootDir}}')"
 if [[ "$docker_root_dir" == /var/snap/docker/* ]]; then
   compose_files+=(-f compose.snap.yaml)
