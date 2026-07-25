@@ -1,10 +1,12 @@
 import asyncio
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from services.common.schemas import (
     ExperimentComparisonRequest,
@@ -40,6 +42,12 @@ AGENT_URLS = {
 }
 
 app = FastAPI(title=SERVICE_NAME, version=VERSION)
+DEMO_FILE = Path(__file__).with_name("static") / "demo.html"
+
+
+@app.get("/demo", include_in_schema=False)
+async def demo() -> FileResponse:
+    return FileResponse(DEMO_FILE)
 
 
 @lru_cache(maxsize=1)

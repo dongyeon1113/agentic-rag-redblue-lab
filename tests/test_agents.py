@@ -23,6 +23,14 @@ def test_all_services_report_health() -> None:
         assert response.json()["service"] == expected_name
 
 
+def test_orchestrator_serves_demo_gui() -> None:
+    response = TestClient(orchestrator_app).get("/demo")
+
+    assert response.status_code == 200
+    assert "Agentic RAG Lab" in response.text
+    assert 'id="questionForm"' in response.text
+
+
 def test_local_db_search_endpoint() -> None:
     response = TestClient(local_db_app).post(
         "/search",

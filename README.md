@@ -59,6 +59,7 @@ The five long-running services should report `healthy`. The
 checking or downloading the model.
 
 Open the orchestrator API documentation at `http://localhost:8000/docs`.
+For a simple demonstration UI, open `http://localhost:8000/demo`.
 
 ## API examples
 

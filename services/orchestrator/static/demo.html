@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentic RAG Lab</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: #131a2d;
+        --panel-2: #18223a;
+        --line: #2a3653;
+        --text: #eef2ff;
+        --muted: #9eabc7;
+        --primary: #70e1c1;
+        --primary-dark: #123c36;
+        --danger: #ff8c9d;
+        --warning: #ffc970;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter, Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background:
+          radial-gradient(circle at 20% 0%, #17304a 0, transparent 34rem),
+          var(--bg);
+        color: var(--text);
+      }
+
+      button, textarea, input { font: inherit; }
+
+      .shell {
+        width: min(1080px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 44px 0 64px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .18em;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 6vw, 56px);
+        letter-spacing: -.045em;
+      }
+
+      .subtitle {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(19, 26, 45, .72);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--warning);
+        box-shadow: 0 0 14px currentColor;
+      }
+
+      .status.ok .status-dot { background: var(--primary); }
+      .status.error .status-dot { background: var(--danger); }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+        gap: 18px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(19, 26, 45, .9);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, .22);
+        overflow: hidden;
+      }
+
+      .card-body { padding: 24px; }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: 18px;
+      }
+
+      label, legend {
+        display: block;
+        margin-bottom: 9px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 124px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        outline: 0;
+        padding: 15px;
+        background: var(--panel-2);
+        color: var(--text);
+        line-height: 1.55;
+      }
+
+      textarea:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(112, 225, 193, .12);
+      }
+
+      fieldset {
+        border: 0;
+        padding: 0;
+        margin: 20px 0;
+      }
+
+      .choices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+      }
+
+      .choice input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .choice span {
+        display: block;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--muted);
+        cursor: pointer;
+        transition: .16s ease;
+      }
+
+      .choice input:checked + span {
+        border-color: var(--primary);
+        background: var(--primary-dark);
+        color: var(--text);
+      }
+
+      .mode input:checked + span {
+        border-color: var(--warning);
+        background: #3c321e;
+      }
+
+      .mode.defended input:checked + span {
+        border-color: var(--primary);
+        background: var(--primary-dark);
+      }
+
+      .submit {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        padding: 13px 18px;
+        background: var(--primary);
+        color: #07120f;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .submit:hover { filter: brightness(1.08); }
+      .submit:disabled { cursor: wait; opacity: .55; }
+
+      .result-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .result-head h2 { margin: 0; }
+
+      .mode-badge {
+        padding: 6px 9px;
+        border-radius: 8px;
+        background: #3c321e;
+        color: var(--warning);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .mode-badge.defended {
+        background: var(--primary-dark);
+        color: var(--primary);
+      }
+
+      .answer {
+        min-height: 172px;
+        margin: 0;
+        white-space: pre-wrap;
+        line-height: 1.75;
+        font-size: 17px;
+      }
+
+      .placeholder { color: var(--muted); }
+
+      .sources {
+        display: grid;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .source {
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel-2);
+      }
+
+      .source-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 7px;
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .source p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .error-text { color: var(--danger); }
+
+      @media (max-width: 780px) {
+        .shell { padding-top: 28px; }
+        header { align-items: flex-start; flex-direction: column; }
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <p class="eyebrow">MULTI-AGENT RAG DEMO</p>
+          <h1>검색하고, 비교하고, 확인하세요.</h1>
+          <p class="subtitle">
+            Local DB·Gmail·Drive에서 문서를 찾고 Qwen3:8b의 답변을 확인합니다.
+          </p>
+        </div>
+        <div class="status" id="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span id="statusText">상태 확인 중</span>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section class="card" aria-labelledby="questionTitle">
+          <div class="card-body">
+            <h2 id="questionTitle">질문 설정</h2>
+            <form id="questionForm">
+              <label for="question">질문</label>
+              <textarea id="question" required>What is the capital of France?</textarea>
+
+              <fieldset>
+                <legend>검색할 데이터</legend>
+                <div class="choices">
+                  <label class="choice">
+                    <input type="checkbox" name="source" value="local_db" checked />
+                    <span>Local DB</span>
+                  </label>
+                  <label class="choice">
+                    <input type="checkbox" name="source" value="gmail" checked />
+                    <span>Gmail</span>
+                  </label>
+                  <label class="choice">
+                    <input type="checkbox" name="source" value="drive" checked />
+                    <span>Drive</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend>실험 모드</legend>
+                <div class="choices">
+                  <label class="choice mode">
+                    <input type="radio" name="mode" value="vulnerable" checked />
+                    <span>Vulnerable</span>
+                  </label>
+                  <label class="choice mode defended">
+                    <input type="radio" name="mode" value="defended" />
+                    <span>Defended</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <button class="submit" id="submitButton" type="submit">
+                답변 생성
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="resultTitle">
+          <div class="result-head">
+            <h2 id="resultTitle">실험 결과</h2>
+            <span class="mode-badge" id="modeBadge">VULNERABLE</span>
+          </div>
+          <div class="card-body">
+            <p class="answer placeholder" id="answer">
+              왼쪽에서 질문을 입력하고 ‘답변 생성’을 눌러주세요.
+            </p>
+            <div class="sources" id="sources"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const form = document.getElementById("questionForm");
+      const answer = document.getElementById("answer");
+      const sources = document.getElementById("sources");
+      const submitButton = document.getElementById("submitButton");
+      const modeBadge = document.getElementById("modeBadge");
+      const status = document.getElementById("status");
+      const statusText = document.getElementById("statusText");
+
+      function escapeHtml(value) {
+        const node = document.createElement("div");
+        node.textContent = value;
+        return node.innerHTML;
+      }
+
+      function renderSources(documents) {
+        sources.innerHTML = "";
+        if (!documents.length) return;
+
+        const heading = document.createElement("label");
+        heading.textContent = `사용된 문서 ${documents.length}개`;
+        sources.appendChild(heading);
+
+        documents.forEach((record, index) => {
+          const item = document.createElement("article");
+          item.className = "source";
+          item.innerHTML = `
+            <div class="source-top">
+              <span>${index + 1}. ${escapeHtml(record.source)}</span>
+              <span>score ${Number(record.score).toFixed(3)}</span>
+            </div>
+            <p>${escapeHtml(record.text.slice(0, 220))}</p>
+          `;
+          sources.appendChild(item);
+        });
+      }
+
+      async function checkHealth() {
+        try {
+          const response = await fetch("/agents");
+          const payload = await response.json();
+          const values = Object.values(payload.agents || {});
+          const healthy = values.length > 0 &&
+            values.every((agent) => agent.status === "ok");
+          status.className = `status ${healthy ? "ok" : "error"}`;
+          statusText.textContent = healthy ? "에이전트 정상" : "일부 에이전트 오류";
+        } catch {
+          status.className = "status error";
+          statusText.textContent = "서버 연결 오류";
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const selectedSources = [...form.querySelectorAll(
+          'input[name="source"]:checked'
+        )].map((input) => input.value);
+        const mode = form.querySelector('input[name="mode"]:checked').value;
+
+        if (!selectedSources.length) {
+          answer.className = "answer error-text";
+          answer.textContent = "검색할 데이터를 하나 이상 선택해 주세요.";
+          return;
+        }
+
+        modeBadge.textContent = mode.toUpperCase();
+        modeBadge.className = `mode-badge ${mode}`;
+        answer.className = "answer placeholder";
+        answer.textContent = "검색 에이전트와 모델이 답변을 생성하고 있습니다…";
+        sources.innerHTML = "";
+        submitButton.disabled = true;
+
+        try {
+          const response = await fetch("/answer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: document.getElementById("question").value.trim(),
+              sources: selectedSources,
+              limit: 3,
+              mode,
+            }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.detail || "요청에 실패했습니다.");
+          }
+          answer.className = "answer";
+          answer.textContent = payload.answer;
+          renderSources(payload.documents || []);
+        } catch (error) {
+          answer.className = "answer error-text";
+          answer.textContent = error.message;
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+
+      checkHealth();
+    </script>
+  </body>
+</html>
