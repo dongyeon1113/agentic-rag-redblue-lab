@@ -123,6 +123,40 @@ def test_orchestrator_forwards_experiment_document(monkeypatch) -> None:
     assert response.json()["trust"] == "untrusted"
 
 
+def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
+    requested_limits = []
+
+    async def fake_query_agents(request):
+        requested_limits.append(request.limit)
+        return {}
+
+    monkeypatch.setattr(orchestrator_module, "_query_agents", fake_query_agents)
+    client = TestClient(orchestrator_app)
+
+    defended = client.post(
+        "/answer",
+        json={
+            "query": "What is the capital of France?",
+            "sources": ["local_db"],
+            "limit": 3,
+            "mode": "defended",
+        },
+    )
+    vulnerable = client.post(
+        "/answer",
+        json={
+            "query": "What is the capital of France?",
+            "sources": ["local_db"],
+            "limit": 3,
+            "mode": "vulnerable",
+        },
+    )
+
+    assert defended.status_code == 200
+    assert vulnerable.status_code == 200
+    assert requested_limits == [20, 3]
+
+
 def test_orchestrator_evaluates_answer_and_retrieval(monkeypatch) -> None:
     async def fake_generate_answer(request):
         return {

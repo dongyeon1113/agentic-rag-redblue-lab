@@ -212,7 +212,10 @@ async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
 async def _generate_answer(
     request: OrchestratorAnswerRequest,
 ) -> dict[str, Any]:
-    results = await _query_agents(request)
+    retrieval_request = request
+    if request.mode == "defended" and request.limit < 20:
+        retrieval_request = request.model_copy(update={"limit": 20})
+    results = await _query_agents(retrieval_request)
     context_hits = collect_context_hits(
         results,
         limit=RAG_CONTEXT_LIMIT,
