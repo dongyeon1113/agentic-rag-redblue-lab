@@ -196,6 +196,11 @@ them by retrieval relevance, and injects only the requested top-scoring
 passages. The result view visualizes the live path from question through Top-K
 retrieval and poison selection to the final LLM answer.
 
+The **전체 비율 실행** action runs isolated 0x, 1x, 2x, 4x, and 6x trials,
+plots ASR and answer accuracy together, and removes only the temporary
+documents created by the sweep. The same operation is available through
+`POST /experiments/ratio-sweep`.
+
 Remove all `untrusted` experiment documents while preserving the original
 trusted dataset:
 

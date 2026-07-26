@@ -37,6 +37,10 @@ class OrchestratorQueryRequest(SearchRequest):
 
 class OrchestratorAnswerRequest(OrchestratorQueryRequest):
     mode: Literal["vulnerable", "defended"] = "vulnerable"
+    allowed_untrusted_document_ids: list[str] | None = Field(
+        default=None,
+        max_length=20,
+    )
 
 
 class ExperimentDocumentRequest(BaseModel):
@@ -64,6 +68,13 @@ class ExperimentDocumentResponse(BaseModel):
 class ExperimentResetResponse(BaseModel):
     status: Literal["reset"] = "reset"
     deleted_count: int
+    document_count: int
+
+
+class ExperimentDeleteResponse(BaseModel):
+    status: Literal["deleted"] = "deleted"
+    document_id: str
+    deleted: bool
     document_count: int
 
 
@@ -236,3 +247,50 @@ class AutomatedAttackResponse(BaseModel):
     selected_candidates: list[PoisonedRAGCandidate]
     metrics: AttackDashboardMetrics
     comparison: ExperimentComparisonResponse
+
+
+class RatioSweepRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attack_type: Literal[
+        "poisonedrag",
+        "data_poisoning",
+        "conflict",
+        "keyword_stuffing",
+        "prompt_injection",
+    ]
+    query: str = Field(min_length=1, max_length=500)
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    repetitions: int = Field(default=8, ge=1, le=50)
+    limit: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "RatioSweepRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class RatioSweepPoint(BaseModel):
+    poison_ratio: Literal[0, 1, 2, 4, 6]
+    attack_success_rate: float
+    accuracy: float
+    poison_in_top_k: int
+    top_k: int
+
+
+class RatioSweepResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    strategy: Literal[
+        "poisonedrag",
+        "data_poisoning",
+        "conflict",
+        "keyword_stuffing",
+        "prompt_injection",
+    ]
+    ratios: list[Literal[0, 1, 2, 4, 6]]
+    points: list[RatioSweepPoint]
+    cleaned_document_count: int

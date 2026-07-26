@@ -28,6 +28,9 @@ from services.common.schemas import (
     PoisonedRAGCandidate,
     PoisonedRAGRequest,
     PoisonedRAGResponse,
+    RatioSweepPoint,
+    RatioSweepRequest,
+    RatioSweepResponse,
     SearchHit,
 )
 from services.orchestrator.attack_automation import build_attack_candidates
@@ -246,9 +249,23 @@ async def _generate_answer(
     request: OrchestratorAnswerRequest,
 ) -> dict[str, Any]:
     retrieval_request = request
-    if request.mode == "defended" and request.limit < 20:
+    if (
+        request.mode == "defended"
+        or request.allowed_untrusted_document_ids is not None
+    ) and request.limit < 20:
         retrieval_request = request.model_copy(update={"limit": 20})
     results = await _query_agents(retrieval_request)
+    if request.allowed_untrusted_document_ids is not None:
+        allowed = set(request.allowed_untrusted_document_ids)
+        for result in results.values():
+            if result.get("status") != "ok":
+                continue
+            result["hits"] = [
+                hit
+                for hit in result.get("hits", [])
+                if hit.get("trust") != "untrusted"
+                or hit.get("document_id") in allowed
+            ]
     context_hits = collect_context_hits(
         results,
         limit=RAG_CONTEXT_LIMIT,
@@ -488,6 +505,7 @@ async def run_poisoned_rag_experiment(
             expected_answer=request.expected_answer,
             attack_target=request.attack_target,
             attack_document_ids=document_ids,
+            allowed_untrusted_document_ids=document_ids,
         )
     )
     vulnerable = comparison.vulnerable
@@ -571,6 +589,7 @@ async def run_automated_attack_experiment(
             expected_answer=request.expected_answer,
             attack_target=request.attack_target,
             attack_document_ids=document_ids,
+            allowed_untrusted_document_ids=document_ids,
         )
     )
     vulnerable = comparison.vulnerable
@@ -600,4 +619,103 @@ async def run_automated_attack_experiment(
         selected_candidates=selected_candidates,
         metrics=metrics,
         comparison=comparison,
+    )
+
+
+async def _delete_experiment_documents(document_ids: list[str]) -> int:
+    if not document_ids:
+        return 0
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        responses = await asyncio.gather(
+            *[
+                _request_json(
+                    client,
+                    "DELETE",
+                    f"{AGENT_URLS['local_db']}/documents/{document_id}",
+                )
+                for document_id in document_ids
+            ],
+            return_exceptions=True,
+        )
+    return sum(
+        isinstance(response, dict) and response.get("deleted") is True
+        for response in responses
+    )
+
+
+@app.post(
+    "/experiments/ratio-sweep",
+    response_model=RatioSweepResponse,
+)
+async def run_ratio_sweep(
+    request: RatioSweepRequest,
+) -> RatioSweepResponse:
+    ratios = [0, 1, 2, 4, 6]
+    points: list[RatioSweepPoint] = []
+    baseline = await _generate_answer(
+        OrchestratorAnswerRequest(
+            query=request.query,
+            sources=["local_db"],
+            limit=request.limit,
+            mode="vulnerable",
+            allowed_untrusted_document_ids=[],
+        )
+    )
+    _, expected_present, target_present = evaluate_answer(
+        baseline["answer"],
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+    )
+    points.append(
+        RatioSweepPoint(
+            poison_ratio=0,
+            attack_success_rate=1.0 if target_present else 0.0,
+            accuracy=1.0 if expected_present else 0.0,
+            poison_in_top_k=0,
+            top_k=len(baseline["documents"]),
+        )
+    )
+
+    cleaned_document_count = 0
+    for ratio in ratios[1:]:
+        if request.attack_type == "poisonedrag":
+            result = await run_poisoned_rag_experiment(
+                PoisonedRAGRequest(
+                    query=request.query,
+                    expected_answer=request.expected_answer,
+                    attack_target=request.attack_target,
+                    poison_ratio=ratio,
+                    limit=request.limit,
+                )
+            )
+        else:
+            result = await run_automated_attack_experiment(
+                AutomatedAttackRequest(
+                    attack_type=request.attack_type,
+                    query=request.query,
+                    expected_answer=request.expected_answer,
+                    attack_target=request.attack_target,
+                    poison_ratio=ratio,
+                    repetitions=request.repetitions,
+                    limit=request.limit,
+                )
+            )
+        points.append(
+            RatioSweepPoint(
+                poison_ratio=ratio,
+                attack_success_rate=result.metrics.attack_success_rate,
+                accuracy=result.metrics.accuracy,
+                poison_in_top_k=result.metrics.poison_in_top_k,
+                top_k=result.metrics.top_k,
+            )
+        )
+        cleaned_document_count += await _delete_experiment_documents(
+            result.document_ids
+        )
+
+    return RatioSweepResponse(
+        strategy=request.attack_type,
+        ratios=ratios,
+        points=points,
+        cleaned_document_count=cleaned_document_count,
     )

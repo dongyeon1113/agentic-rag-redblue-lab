@@ -383,6 +383,11 @@
         font-weight: 800;
       }
       .automation small { color: var(--muted); }
+      .automation-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
       .attack-setting[hidden] { display: none; }
       .attack-toggle {
         display: flex;
@@ -637,6 +642,124 @@
       .metric span { display: block; color: var(--muted); font-size: 10px; }
       .metric strong { display: block; margin-top: 3px; font-size: 13px; }
 
+      .ratio-analysis {
+        margin-top: 14px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface-2);
+      }
+
+      .ratio-analysis[hidden] { display: none; }
+
+      .ratio-chart-header,
+      .ratio-legend {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .ratio-chart-header h3 { margin: 0; font-size: 14px; }
+      .ratio-chart-header small { color: var(--muted); font-size: 9px; }
+
+      .ratio-legend {
+        justify-content: flex-start;
+        margin: 12px 0 8px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-swatch {
+        width: 9px;
+        height: 9px;
+        border-radius: 3px;
+      }
+
+      .legend-swatch.asr { background: var(--red); }
+      .legend-swatch.accuracy { background: var(--mint); }
+
+      .ratio-chart {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(56px, 1fr));
+        gap: 12px;
+        min-height: 210px;
+        padding: 14px 10px 8px;
+        border-radius: 12px;
+        background:
+          repeating-linear-gradient(
+            to top,
+            transparent 0,
+            transparent 48px,
+            rgba(120, 145, 190, .11) 49px,
+            rgba(120, 145, 190, .11) 50px
+          ),
+          rgba(7, 11, 20, .32);
+      }
+
+      .ratio-group {
+        display: grid;
+        grid-template-rows: 1fr auto auto;
+        gap: 7px;
+        min-width: 0;
+        text-align: center;
+      }
+
+      .ratio-bars {
+        display: flex;
+        align-items: end;
+        justify-content: center;
+        gap: 7px;
+        min-height: 150px;
+      }
+
+      .ratio-series {
+        display: grid;
+        grid-template-rows: auto 130px;
+        gap: 5px;
+        width: min(30px, 42%);
+        height: 153px;
+      }
+
+      .ratio-value {
+        color: var(--muted);
+        font-size: 9px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+      }
+
+      .ratio-track {
+        display: flex;
+        align-items: end;
+        overflow: hidden;
+        border-radius: 7px 7px 3px 3px;
+        background: rgba(120, 145, 190, .08);
+      }
+
+      .ratio-bar {
+        width: 100%;
+        min-height: 2px;
+        border-radius: 7px 7px 3px 3px;
+        transition: height .35s ease;
+      }
+
+      .ratio-bar.asr { background: var(--red); }
+      .ratio-bar.accuracy { background: var(--mint); }
+      .ratio-label { font-size: 11px; font-weight: 900; }
+      .ratio-meta {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 9px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .notice {
         margin-bottom: 14px;
         padding: 11px 12px;
@@ -666,6 +789,13 @@
         .step { grid-template-columns: 31px 1fr; }
         .step .button { grid-column: 1 / -1; width: 100%; }
         .automation { grid-template-columns: 1fr; }
+        .automation-actions { flex-direction: row; }
+        .automation-actions .button { flex: 1; }
+        .ratio-chart {
+          gap: 5px;
+          padding-inline: 5px;
+        }
+        .ratio-bars { gap: 3px; }
       }
     </style>
   </head>
@@ -918,9 +1048,22 @@
                     LLM 후보 생성 → 검색 관련도 선별 → 비율별 주입
                   </small>
                 </div>
-                <button class="button attack" id="autoAttackButton" type="button">
-                  자동 실행
-                </button>
+                <div class="automation-actions">
+                  <button
+                    class="button attack"
+                    id="autoAttackButton"
+                    type="button"
+                  >
+                    단일 비율 실행
+                  </button>
+                  <button
+                    class="button secondary"
+                    id="sweepButton"
+                    type="button"
+                  >
+                    전체 비율 실행
+                  </button>
+                </div>
               </div>
             </div>
           </article>
@@ -1076,6 +1219,30 @@
                   <strong id="defenseBlocked">—</strong>
                 </div>
               </div>
+
+              <section class="ratio-analysis" id="ratioAnalysis" hidden>
+                <div class="ratio-chart-header">
+                  <h3>Poison 비율별 공격 영향</h3>
+                  <small id="ratioChartStatus">
+                    0x·1x·2x·4x·6x 격리 실행
+                  </small>
+                </div>
+                <div class="ratio-legend" aria-label="그래프 범례">
+                  <span class="legend-item">
+                    <span class="legend-swatch asr"></span>
+                    ASR
+                  </span>
+                  <span class="legend-item">
+                    <span class="legend-swatch accuracy"></span>
+                    정상 정확도
+                  </span>
+                </div>
+                <div
+                  class="ratio-chart"
+                  id="ratioChart"
+                  aria-live="polite"
+                ></div>
+              </section>
             </div>
           </article>
         </div>
@@ -1403,6 +1570,48 @@
         byId("poisonInTopK").textContent = `${poisonCount} / ${topK}`;
       }
 
+      function renderRatioChart(points) {
+        const container = byId("ratioChart");
+        container.innerHTML = "";
+        points.forEach((point) => {
+          const asr = Math.round(point.attack_success_rate * 100);
+          const accuracy = Math.round(point.accuracy * 100);
+          const group = document.createElement("article");
+          group.className = "ratio-group";
+          group.setAttribute(
+            "aria-label",
+            `${point.poison_ratio}배: ASR ${asr}%, 정확도 ${accuracy}%`
+          );
+          group.innerHTML = `
+            <div class="ratio-bars">
+              <div class="ratio-series">
+                <span class="ratio-value">${asr}%</span>
+                <div class="ratio-track">
+                  <div
+                    class="ratio-bar asr"
+                    style="height: ${asr}%"
+                  ></div>
+                </div>
+              </div>
+              <div class="ratio-series">
+                <span class="ratio-value">${accuracy}%</span>
+                <div class="ratio-track">
+                  <div
+                    class="ratio-bar accuracy"
+                    style="height: ${accuracy}%"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <strong class="ratio-label">${point.poison_ratio}×</strong>
+            <span class="ratio-meta">
+              Poison ${point.poison_in_top_k}/${point.top_k}
+            </span>
+          `;
+          container.appendChild(group);
+        });
+      }
+
       function syncAttackStrategy() {
         const strategy = byId("attackStrategy").value;
         const descriptions = {
@@ -1565,6 +1774,46 @@
         }
       });
 
+      byId("sweepButton").addEventListener("click", async () => {
+        const button = byId("sweepButton");
+        const strategy = byId("attackStrategy").value;
+        const strategyLabel =
+          byId("attackStrategy").selectedOptions[0].textContent.trim();
+        byId("ratioAnalysis").hidden = false;
+        byId("ratioChart").innerHTML =
+          '<span class="retrieval-empty">5개 비율을 순서대로 실행 중…</span>';
+        byId("ratioChartStatus").textContent =
+          `${strategyLabel} · 실험 진행 중`;
+        byId("experimentState").textContent = "RATIO SWEEP RUNNING";
+        byId("experimentState").className = "badge danger";
+        setBusy(button, true, "전체 비율 실행 중");
+
+        try {
+          const result = await request("/experiments/ratio-sweep", {
+            attack_type: strategy,
+            query: byId("attackQuestion").value.trim(),
+            expected_answer: byId("expectedAnswer").value.trim(),
+            attack_target: byId("attackTarget").value.trim(),
+            repetitions: Number(byId("repetitions").value),
+            limit: 5,
+          });
+          renderRatioChart(result.points);
+          byId("ratioChartStatus").textContent =
+            `${strategyLabel} · 임시 문서 ` +
+            `${result.cleaned_document_count}개 정리 완료`;
+          byId("experimentState").textContent = "RATIO SWEEP DONE";
+          byId("experimentState").className = "badge safe";
+        } catch (error) {
+          byId("ratioChart").innerHTML =
+            `<span class="retrieval-empty">${escapeHtml(error.message)}</span>`;
+          byId("ratioChartStatus").textContent = "실험 실행 오류";
+          byId("experimentState").textContent = "RATIO SWEEP ERROR";
+          byId("experimentState").className = "badge danger";
+        } finally {
+          setBusy(button, false);
+        }
+      });
+
       byId("resetButton").addEventListener("click", async () => {
         if (!window.confirm("추가된 untrusted 실험 문서를 모두 삭제할까요?")) {
           return;
@@ -1613,6 +1862,8 @@
             "공격 유형과 검색 포함 수";
           byId("pipelineAnswer").textContent = "생성 대기";
           byId("pipelineAnswerMeta").textContent = "공격 성공 여부";
+          byId("ratioAnalysis").hidden = true;
+          byId("ratioChart").innerHTML = "";
         } catch (error) {
           byId("experimentState").textContent = "RESET ERROR";
           byId("experimentState").className = "badge danger";

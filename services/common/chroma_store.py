@@ -111,6 +111,21 @@ class ChromaDocumentStore:
             self.vector_store.delete(ids=document_ids)
         return len(document_ids)
 
+    def delete_untrusted_document(self, document_id: str) -> bool:
+        records = self.vector_store.get(
+            ids=[document_id],
+            include=["metadatas"],
+        )
+        ids = records.get("ids", [])
+        if not ids:
+            return False
+        metadatas = records.get("metadatas", [])
+        metadata = metadatas[0] if metadatas else {}
+        if metadata.get("trust") != "untrusted":
+            raise ValueError("Only untrusted experiment documents can be deleted")
+        self.vector_store.delete(ids=[document_id])
+        return True
+
     @staticmethod
     def _decode_tags(value: object) -> list[str]:
         if not isinstance(value, str):

@@ -48,6 +48,9 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="pipelineRetrieval"' in response.text
     assert 'id="pipelinePoison"' in response.text
     assert 'id="pipelineAnswer"' in response.text
+    assert 'id="sweepButton"' in response.text
+    assert 'id="ratioAnalysis"' in response.text
+    assert 'id="ratioChart"' in response.text
     assert 'id="baselineDocuments"' in response.text
     assert 'id="vulnerableDocuments"' in response.text
     assert 'id="defendedDocuments"' in response.text
@@ -57,6 +60,7 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert '"/experiments/compare"' in response.text
     assert '"/experiments/poisoned-rag"' in response.text
     assert '"/experiments/automated-attack"' in response.text
+    assert '"/experiments/ratio-sweep"' in response.text
 
 
 def test_local_db_search_endpoint() -> None:
@@ -114,6 +118,24 @@ def test_local_db_rejects_duplicate_experiment_document_id() -> None:
 
     assert duplicate.status_code == 409
     assert "already exists" in duplicate.json()["detail"]
+
+
+def test_local_db_deletes_one_untrusted_document() -> None:
+    client = TestClient(local_db_app)
+    document_id = f"experiment-{uuid4().hex}"
+    payload = {
+        "document_id": document_id,
+        "source": "red-team-lab",
+        "tags": ["temporary"],
+        "text": "Controlled document for targeted cleanup.",
+    }
+    assert client.post("/documents", json=payload).status_code == 201
+
+    deleted = client.delete(f"/documents/{document_id}")
+
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+    assert deleted.json()["document_id"] == document_id
 
 
 def test_orchestrator_forwards_experiment_document(monkeypatch) -> None:
@@ -197,10 +219,21 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
             "mode": "vulnerable",
         },
     )
+    isolated = client.post(
+        "/answer",
+        json={
+            "query": "What is the capital of France?",
+            "sources": ["local_db"],
+            "limit": 3,
+            "mode": "vulnerable",
+            "allowed_untrusted_document_ids": ["current-run-poison"],
+        },
+    )
 
     assert defended.status_code == 200
     assert vulnerable.status_code == 200
-    assert requested_limits == [20, 3]
+    assert isolated.status_code == 200
+    assert requested_limits == [20, 3, 20]
 
 
 def test_orchestrator_evaluates_answer_and_retrieval(monkeypatch) -> None:

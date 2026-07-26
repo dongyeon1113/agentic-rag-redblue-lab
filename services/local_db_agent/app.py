@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from services.common.agent_factory import create_search_agent
 from services.common.chroma_store import ChromaDocumentStore
 from services.common.schemas import (
+    ExperimentDeleteResponse,
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
     ExperimentResetResponse,
@@ -71,5 +72,33 @@ async def delete_untrusted_documents() -> ExperimentResetResponse:
     deleted_count = store.delete_untrusted_documents()
     return ExperimentResetResponse(
         deleted_count=deleted_count,
+        document_count=store.count(),
+    )
+
+
+@app.delete(
+    "/documents/{document_id}",
+    response_model=ExperimentDeleteResponse,
+)
+async def delete_untrusted_document(
+    document_id: str,
+) -> ExperimentDeleteResponse:
+    store = app.state.document_store
+    if not isinstance(store, ChromaDocumentStore):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Experiment document deletion requires the Chroma backend.",
+        )
+
+    try:
+        deleted = store.delete_untrusted_document(document_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    return ExperimentDeleteResponse(
+        document_id=document_id,
+        deleted=deleted,
         document_count=store.count(),
     )
