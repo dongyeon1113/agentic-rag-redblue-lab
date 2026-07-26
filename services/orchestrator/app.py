@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from services.common.schemas import (
+    AutomatedAttackRequest,
+    AutomatedAttackResponse,
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
     ExperimentDocumentRequest,
@@ -28,6 +30,7 @@ from services.common.schemas import (
     PoisonedRAGResponse,
     SearchHit,
 )
+from services.orchestrator.attack_automation import build_attack_documents
 from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
 from services.orchestrator.keyword_stuffing import (
     build_keyword_stuffing_document,
@@ -509,6 +512,76 @@ async def run_poisoned_rag_experiment(
         generated_candidate_count=len(candidates),
         document_ids=document_ids,
         selected_candidates=selected_candidates,
+        metrics=metrics,
+        comparison=comparison,
+    )
+
+
+@app.post(
+    "/experiments/automated-attack",
+    response_model=AutomatedAttackResponse,
+)
+async def run_automated_attack_experiment(
+    request: AutomatedAttackRequest,
+) -> AutomatedAttackResponse:
+    poison_texts = build_attack_documents(
+        attack_type=request.attack_type,
+        query=request.query,
+        expected_answer=request.expected_answer,
+        attack_target=request.attack_target,
+        poison_ratio=request.poison_ratio,
+        repetitions=request.repetitions,
+    )
+    run_id = uuid4().hex[:12]
+    document_ids: list[str] = []
+    for index, poison_text in enumerate(poison_texts, start=1):
+        document_id = f"{request.attack_type}-{run_id}-{index}"
+        await create_experiment_document(
+            ExperimentDocumentRequest(
+                document_id=document_id,
+                source=f"{request.attack_type}-automation",
+                tags=[
+                    "controlled",
+                    "poison",
+                    request.attack_type,
+                    f"ratio-{request.poison_ratio}x",
+                ],
+                text=poison_text,
+            )
+        )
+        document_ids.append(document_id)
+
+    comparison = await compare_experiment_modes(
+        ExperimentComparisonRequest(
+            query=request.query,
+            sources=["local_db"],
+            limit=request.limit,
+            expected_answer=request.expected_answer,
+            attack_target=request.attack_target,
+            attack_document_ids=document_ids,
+        )
+    )
+    vulnerable = comparison.vulnerable
+    selected_document_ids = set(document_ids)
+    poison_in_top_k = sum(
+        document.document_id in selected_document_ids
+        for document in vulnerable.documents
+    )
+    top_k = len(vulnerable.documents)
+    metrics = AttackDashboardMetrics(
+        attack_success_rate=1.0 if vulnerable.attack_target_present else 0.0,
+        accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
+        poison_in_top_k=poison_in_top_k,
+        top_k=top_k,
+        poison_retrieval_rate=(
+            round(poison_in_top_k / top_k, 4) if top_k else 0.0
+        ),
+    )
+    return AutomatedAttackResponse(
+        strategy=request.attack_type,
+        poison_ratio=request.poison_ratio,
+        document_ids=document_ids,
+        poison_texts=poison_texts,
         metrics=metrics,
         comparison=comparison,
     )

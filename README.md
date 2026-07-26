@@ -172,6 +172,26 @@ curl -X POST http://localhost:8000/experiments/poisoned-rag \
   }'
 ```
 
+Run one of the separated controlled attack types (`data_poisoning`, `conflict`,
+`keyword_stuffing`, or `prompt_injection`) at a selected injection ratio:
+
+```bash
+curl -X POST http://localhost:8000/experiments/automated-attack \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "attack_type": "conflict",
+    "query": "What is the capital of France?",
+    "expected_answer": "Paris",
+    "attack_target": "Lyon",
+    "poison_ratio": 2,
+    "repetitions": 8,
+    "limit": 5
+  }'
+```
+
+The demo GUI includes topic presets for the committed NQ sample facts and
+separate selectors for attack type, defense display, and poison ratio.
+
 Remove all `untrusted` experiment documents while preserving the original
 trusted dataset:
 

@@ -152,6 +152,31 @@ class KeywordStuffingResponse(BaseModel):
     comparison: ExperimentComparisonResponse
 
 
+class AutomatedAttackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attack_type: Literal[
+        "data_poisoning",
+        "conflict",
+        "keyword_stuffing",
+        "prompt_injection",
+    ]
+    query: str = Field(min_length=1, max_length=500)
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    poison_ratio: Literal[1, 2, 4, 6] = 1
+    repetitions: int = Field(default=8, ge=1, le=50)
+    limit: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "AutomatedAttackRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
 class PoisonedRAGRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -192,5 +217,20 @@ class PoisonedRAGResponse(BaseModel):
     generated_candidate_count: int
     document_ids: list[str]
     selected_candidates: list[PoisonedRAGCandidate]
+    metrics: AttackDashboardMetrics
+    comparison: ExperimentComparisonResponse
+
+
+class AutomatedAttackResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    strategy: Literal[
+        "data_poisoning",
+        "conflict",
+        "keyword_stuffing",
+        "prompt_injection",
+    ]
+    poison_ratio: Literal[1, 2, 4, 6]
+    document_ids: list[str]
+    poison_texts: list[str]
     metrics: AttackDashboardMetrics
     comparison: ExperimentComparisonResponse

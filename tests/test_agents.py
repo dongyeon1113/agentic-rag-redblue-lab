@@ -32,9 +32,14 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="injectButton"' in response.text
     assert 'id="compareButton"' in response.text
     assert 'id="resetButton"' in response.text
-    assert 'id="includePromptInjection"' in response.text
     assert 'id="attackStrategy"' in response.text
+    assert 'id="topicPreset"' in response.text
+    assert 'id="defenseStrategy"' in response.text
     assert 'id="poisonRatio"' in response.text
+    assert "Data Poisoning" in response.text
+    assert "Conflict Attack" in response.text
+    assert "Keyword Stuffing" in response.text
+    assert "Prompt Injection" in response.text
     assert 'id="attackSuccessRate"' in response.text
     assert 'id="answerAccuracy"' in response.text
     assert 'id="poisonInTopK"' in response.text
@@ -45,6 +50,7 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
     assert '"/experiments/poisoned-rag"' in response.text
+    assert '"/experiments/automated-attack"' in response.text
 
 
 def test_local_db_search_endpoint() -> None:
