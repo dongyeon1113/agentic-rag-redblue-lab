@@ -124,8 +124,8 @@ def test_poisoned_rag_endpoint_generates_selects_and_compares(
     assert len(result["selected_candidates"]) == 2
     assert len(created_documents) == 2
     assert result["metrics"] == {
-        "attack_success_rate": 1.0,
-        "accuracy": 0.0,
+        "attack_success_rate": 0.0,
+        "accuracy": 1.0,
         "poison_in_top_k": 2,
         "top_k": 3,
         "poison_retrieval_rate": 0.6667,

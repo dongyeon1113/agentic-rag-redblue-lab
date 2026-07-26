@@ -1677,7 +1677,7 @@
 
               <div class="metrics">
                 <div class="metric">
-                  <span>Attack Success Rate</span>
+                  <span>필터 우회 성공률</span>
                   <strong id="attackSuccessRate">—</strong>
                 </div>
                 <div class="metric">
@@ -2044,13 +2044,14 @@
 
       function renderDashboardMetrics(metrics, comparison) {
         const vulnerable = comparison.vulnerable;
+        const defended = comparison.defended;
         const topK = metrics?.top_k ?? vulnerable.documents.length;
         const poisonCount =
           metrics?.poison_in_top_k ?? vulnerable.untrusted_document_count;
         const asr = metrics?.attack_success_rate ??
-          (vulnerable.outcome === "attack_succeeded" ? 1 : 0);
+          (defended.outcome === "attack_succeeded" ? 1 : 0);
         const accuracy = metrics?.accuracy ??
-          (vulnerable.expected_answer_present ? 1 : 0);
+          (defended.expected_answer_present ? 1 : 0);
 
         byId("attackSuccessRate").textContent =
           `${Math.round(asr * 100)}%`;

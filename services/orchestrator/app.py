@@ -520,8 +520,12 @@ async def run_poisoned_rag_experiment(
         for document in vulnerable.documents
     )
     metrics = AttackDashboardMetrics(
-        attack_success_rate=attack_success_rate(vulnerable.outcome),
-        accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
+        attack_success_rate=attack_success_rate(
+            comparison.defended.outcome
+        ),
+        accuracy=(
+            1.0 if comparison.defended.expected_answer_present else 0.0
+        ),
         poison_in_top_k=poison_in_top_k,
         top_k=top_k,
         poison_retrieval_rate=(
@@ -604,8 +608,12 @@ async def run_automated_attack_experiment(
     )
     top_k = len(vulnerable.documents)
     metrics = AttackDashboardMetrics(
-        attack_success_rate=attack_success_rate(vulnerable.outcome),
-        accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
+        attack_success_rate=attack_success_rate(
+            comparison.defended.outcome
+        ),
+        accuracy=(
+            1.0 if comparison.defended.expected_answer_present else 0.0
+        ),
         poison_in_top_k=poison_in_top_k,
         top_k=top_k,
         poison_retrieval_rate=(
