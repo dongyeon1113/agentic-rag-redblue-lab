@@ -436,6 +436,96 @@
         white-space: pre-wrap;
       }
 
+      .retrieval-panel {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .retrieval-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .retrieval-heading strong { font-size: 11px; }
+      .retrieval-heading small {
+        color: var(--muted);
+        font-size: 9px;
+        text-align: right;
+      }
+
+      .retrieval-list { display: grid; gap: 7px; }
+
+      .retrieval-item {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr) auto;
+        gap: 9px;
+        align-items: start;
+        padding: 9px;
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        background: rgba(11, 18, 32, .5);
+      }
+
+      .retrieval-rank {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--surface-3);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .retrieval-meta {
+        overflow: hidden;
+        color: var(--text);
+        font-size: 10px;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .retrieval-preview {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.45;
+      }
+
+      .retrieval-score {
+        color: var(--blue);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 900;
+      }
+
+      .trust-label {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 5px;
+        border-radius: 5px;
+        background: rgba(101, 224, 191, .12);
+        color: var(--mint);
+        font-size: 8px;
+        text-transform: uppercase;
+      }
+
+      .trust-label.untrusted {
+        background: rgba(255, 111, 132, .13);
+        color: var(--red);
+      }
+
+      .retrieval-empty {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
       .metrics {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -710,6 +800,15 @@
                   <p class="result-answer placeholder" id="baselineAnswer">
                     1단계를 실행하면 정상 답변이 표시됩니다.
                   </p>
+                  <div class="retrieval-panel">
+                    <div class="retrieval-heading">
+                      <strong>실제 검색 결과</strong>
+                      <small>LLM이 생성한 인용과 다를 수 있음</small>
+                    </div>
+                    <div class="retrieval-list" id="baselineDocuments">
+                      <span class="retrieval-empty">검색 전</span>
+                    </div>
+                  </div>
                 </section>
 
                 <section class="result-card vulnerable">
@@ -720,6 +819,15 @@
                   <p class="result-answer placeholder" id="vulnerableAnswer">
                     Poison 문서 삽입 후 비교 결과가 표시됩니다.
                   </p>
+                  <div class="retrieval-panel">
+                    <div class="retrieval-heading">
+                      <strong>실제 검색 결과</strong>
+                      <small>순위 · 점수 · trust · 문서 ID</small>
+                    </div>
+                    <div class="retrieval-list" id="vulnerableDocuments">
+                      <span class="retrieval-empty">검색 전</span>
+                    </div>
+                  </div>
                 </section>
 
                 <section class="result-card defended">
@@ -730,6 +838,15 @@
                   <p class="result-answer placeholder" id="defendedAnswer">
                     untrusted 문서를 제외한 방어 결과가 표시됩니다.
                   </p>
+                  <div class="retrieval-panel">
+                    <div class="retrieval-heading">
+                      <strong>필터 후 검색 결과</strong>
+                      <small>Defended는 trusted 문서만 표시</small>
+                    </div>
+                    <div class="retrieval-list" id="defendedDocuments">
+                      <span class="retrieval-empty">검색 전</span>
+                    </div>
+                  </div>
                 </section>
               </div>
 
@@ -804,6 +921,37 @@
               <span>${Number(record.score).toFixed(3)}</span>
             </div>
             <p>${escapeHtml(record.text.slice(0, 230))}</p>
+          `;
+          container.appendChild(item);
+        });
+      }
+
+      function renderRetrievalList(containerId, records) {
+        const container = byId(containerId);
+        container.innerHTML = "";
+        if (!records.length) {
+          container.innerHTML =
+            '<span class="retrieval-empty">검색된 문서가 없습니다.</span>';
+          return;
+        }
+
+        records.forEach((record, index) => {
+          const item = document.createElement("article");
+          item.className = "retrieval-item";
+          const trust = String(record.trust || "unknown");
+          const preview = String(record.text || "").slice(0, 120);
+          item.innerHTML = `
+            <span class="retrieval-rank">${index + 1}</span>
+            <div>
+              <div class="retrieval-meta">
+                ${escapeHtml(record.source)}:${escapeHtml(record.document_id)}
+                <span class="trust-label ${trust === "untrusted" ? "untrusted" : ""}">
+                  ${escapeHtml(trust)}
+                </span>
+              </div>
+              <p class="retrieval-preview">${escapeHtml(preview)}</p>
+            </div>
+            <span class="retrieval-score">${Number(record.score).toFixed(3)}</span>
           `;
           container.appendChild(item);
         });
@@ -892,6 +1040,7 @@
           });
           byId("baselineAnswer").className = "result-answer";
           byId("baselineAnswer").textContent = payload.answer;
+          renderRetrievalList("baselineDocuments", payload.documents || []);
           byId("baselineStatus").textContent = "완료";
           byId("experimentState").textContent = "BASELINE READY";
         } catch (error) {
@@ -936,6 +1085,11 @@
         byId("vulnerableAnswer").textContent = vulnerable.answer;
         byId("defendedAnswer").className = "result-answer";
         byId("defendedAnswer").textContent = defended.answer;
+        renderRetrievalList(
+          "vulnerableDocuments",
+          vulnerable.documents || []
+        );
+        renderRetrievalList("defendedDocuments", defended.documents || []);
         byId("vulnerableStatus").textContent =
           vulnerable.outcome.replaceAll("_", " ");
         byId("defendedStatus").textContent =
@@ -1008,6 +1162,10 @@
           });
           byId("baselineAnswer").className = "result-answer";
           byId("baselineAnswer").textContent = baseline.answer;
+          renderRetrievalList(
+            "baselineDocuments",
+            baseline.documents || []
+          );
           byId("baselineStatus").textContent = "완료";
 
           const result = await request("/experiments/keyword-stuffing", {
@@ -1060,6 +1218,9 @@
           byId("defendedAnswer").className = "result-answer placeholder";
           byId("defendedAnswer").textContent =
             "새 실험을 실행하면 결과가 표시됩니다.";
+          renderRetrievalList("baselineDocuments", []);
+          renderRetrievalList("vulnerableDocuments", []);
+          renderRetrievalList("defendedDocuments", []);
           byId("attackRank").textContent = "—";
           byId("attackScore").textContent = "—";
           byId("defenseBlocked").textContent = "—";
