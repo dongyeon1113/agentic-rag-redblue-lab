@@ -39,7 +39,7 @@
           sans-serif;
       }
 
-      button, input, textarea { font: inherit; }
+      button, input, select, textarea { font: inherit; }
       button { color: inherit; }
 
       .app {
@@ -200,7 +200,7 @@
         font-weight: 800;
       }
 
-      input[type="text"], input[type="number"], textarea {
+      input[type="text"], input[type="number"], select, textarea {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 12px;
@@ -213,10 +213,15 @@
 
       textarea { min-height: 112px; resize: vertical; }
 
-      input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+      input[type="text"]:focus,
+      input[type="number"]:focus,
+      select:focus,
+      textarea:focus {
         border-color: var(--mint);
         box-shadow: 0 0 0 3px rgba(100, 224, 190, .11);
       }
+
+      select { appearance: auto; }
 
       fieldset {
         margin: 18px 0;
@@ -347,7 +352,7 @@
 
       .automation {
         display: grid;
-        grid-template-columns: 92px 1fr auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: end;
         gap: 11px;
         margin-top: 14px;
@@ -358,12 +363,19 @@
       }
 
       .automation label { margin-bottom: 5px; }
+      .attack-config {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
       .automation p {
         margin: 0 0 4px;
         font-size: 13px;
         font-weight: 800;
       }
       .automation small { color: var(--muted); }
+      .attack-setting[hidden] { display: none; }
       .attack-toggle {
         display: flex;
         align-items: center;
@@ -377,8 +389,9 @@
       .attack-toggle input {
         width: 16px;
         height: 16px;
-        accent-color: var(--danger);
+        accent-color: var(--red);
       }
+      .attack-toggle[hidden] { display: none; }
 
       .step {
         display: grid;
@@ -565,6 +578,7 @@
         .topbar { align-items: flex-start; }
         .brand span:last-child { display: none; }
         .form-grid, .metrics { grid-template-columns: 1fr; }
+        .attack-config { grid-template-columns: 1fr; }
         .step { grid-template-columns: 31px 1fr; }
         .step .button { grid-column: 1 / -1; width: 100%; }
         .automation { grid-template-columns: 1fr; }
@@ -759,14 +773,50 @@
               </div>
 
               <div class="automation">
-                <div>
-                  <label for="repetitions">반복 횟수</label>
-                  <input id="repetitions" type="number" min="1" max="50" value="8" />
+                <div class="attack-config">
+                  <div>
+                    <label for="attackStrategy">공격 방식</label>
+                    <select id="attackStrategy">
+                      <option value="poisonedrag" selected>
+                        PoisonedRAG
+                      </option>
+                      <option value="hybrid">Hybrid Injection</option>
+                    </select>
+                  </div>
+                  <div class="attack-setting" id="ratioControl">
+                    <label for="poisonRatio">Poison 비율</label>
+                    <select id="poisonRatio">
+                      <option value="1">1×</option>
+                      <option value="2" selected>2×</option>
+                      <option value="4">4×</option>
+                      <option value="6">6×</option>
+                    </select>
+                  </div>
+                  <div
+                    class="attack-setting"
+                    id="repetitionsControl"
+                    hidden
+                  >
+                    <label for="repetitions">반복 횟수</label>
+                    <input
+                      id="repetitions"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value="8"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <p>Hybrid 공격 자동화</p>
-                  <small>검색 키워드 오염과 LLM 지시문을 함께 삽입</small>
-                  <label class="attack-toggle">
+                  <p id="attackAutomationTitle">PoisonedRAG 다중 문서 공격</p>
+                  <small id="attackAutomationDescription">
+                    LLM 후보 생성 → 검색 관련도 선별 → 비율별 주입
+                  </small>
+                  <label
+                    class="attack-toggle"
+                    id="promptInjectionControl"
+                    hidden
+                  >
                     <input
                       id="includePromptInjection"
                       type="checkbox"
@@ -852,6 +902,18 @@
 
               <div class="metrics">
                 <div class="metric">
+                  <span>Attack Success Rate</span>
+                  <strong id="attackSuccessRate">—</strong>
+                </div>
+                <div class="metric">
+                  <span>정상 정확도</span>
+                  <strong id="answerAccuracy">—</strong>
+                </div>
+                <div class="metric">
+                  <span>Poison in Top-K</span>
+                  <strong id="poisonInTopK">—</strong>
+                </div>
+                <div class="metric">
                   <span>공격 문서 순위</span>
                   <strong id="attackRank">—</strong>
                 </div>
@@ -874,7 +936,7 @@
       const byId = (id) => document.getElementById(id);
       const statusBox = byId("status");
       const statusText = byId("statusText");
-      let attackDocumentId = null;
+      let attackDocumentIds = [];
 
       function escapeHtml(value) {
         const node = document.createElement("div");
@@ -1035,7 +1097,7 @@
           const payload = await request("/answer", {
             query: byId("attackQuestion").value.trim(),
             sources: ["local_db"],
-            limit: 3,
+            limit: byId("attackStrategy").value === "poisonedrag" ? 5 : 3,
             mode: "defended",
           });
           byId("baselineAnswer").className = "result-answer";
@@ -1055,21 +1117,22 @@
       byId("injectButton").addEventListener("click", async () => {
         const button = byId("injectButton");
         setBusy(button, true, "삽입 중");
-        attackDocumentId = `gui-poison-${Date.now()}`;
+        const documentId = `gui-poison-${Date.now()}`;
 
         try {
           await request("/experiments/documents", {
-            document_id: attackDocumentId,
+            document_id: documentId,
             source: "red-team-gui",
             tags: ["controlled", "poison", "keyword-stuffing"],
             text: byId("poisonText").value.trim(),
           });
+          attackDocumentIds = [documentId];
           byId("experimentState").textContent = "POISON INSERTED";
           byId("experimentState").className = "badge danger";
           button.textContent = "삽입 완료";
           button.dataset.label = "새 문서 삽입";
         } catch (error) {
-          attackDocumentId = null;
+          attackDocumentIds = [];
           byId("experimentState").textContent = "INSERT ERROR";
           byId("baselineAnswer").className = "result-answer error";
           byId("baselineAnswer").textContent = error.message;
@@ -1108,9 +1171,42 @@
           : "badge";
       }
 
+      function renderDashboardMetrics(metrics, comparison) {
+        const vulnerable = comparison.vulnerable;
+        const topK = metrics?.top_k ?? vulnerable.documents.length;
+        const poisonCount =
+          metrics?.poison_in_top_k ?? vulnerable.untrusted_document_count;
+        const asr = metrics?.attack_success_rate ??
+          (vulnerable.attack_target_present ? 1 : 0);
+        const accuracy = metrics?.accuracy ??
+          (vulnerable.expected_answer_present ? 1 : 0);
+
+        byId("attackSuccessRate").textContent =
+          `${Math.round(asr * 100)}%`;
+        byId("answerAccuracy").textContent =
+          `${Math.round(accuracy * 100)}%`;
+        byId("poisonInTopK").textContent = `${poisonCount} / ${topK}`;
+      }
+
+      function syncAttackStrategy() {
+        const isPoisonedRAG =
+          byId("attackStrategy").value === "poisonedrag";
+        byId("ratioControl").hidden = !isPoisonedRAG;
+        byId("repetitionsControl").hidden = isPoisonedRAG;
+        byId("promptInjectionControl").hidden = isPoisonedRAG;
+        byId("attackAutomationTitle").textContent = isPoisonedRAG
+          ? "PoisonedRAG 다중 문서 공격"
+          : "Hybrid 공격 자동화";
+        byId("attackAutomationDescription").textContent = isPoisonedRAG
+          ? "LLM 후보 생성 → 검색 관련도 선별 → 비율별 주입"
+          : "검색 키워드 오염과 LLM 지시문을 함께 삽입";
+      }
+
+      byId("attackStrategy").addEventListener("change", syncAttackStrategy);
+
       byId("compareButton").addEventListener("click", async () => {
         const button = byId("compareButton");
-        if (!attackDocumentId) {
+        if (!attackDocumentIds.length) {
           byId("experimentState").textContent = "먼저 문서 삽입";
           byId("experimentState").className = "badge danger";
           return;
@@ -1127,9 +1223,10 @@
             limit: 3,
             expected_answer: byId("expectedAnswer").value.trim(),
             attack_target: byId("attackTarget").value.trim(),
-            attack_document_ids: [attackDocumentId],
+            attack_document_ids: attackDocumentIds,
           });
           renderComparison(payload);
+          renderDashboardMetrics(null, payload);
         } catch (error) {
           byId("vulnerableAnswer").className = "result-answer error";
           byId("vulnerableAnswer").textContent = error.message;
@@ -1141,6 +1238,8 @@
 
       byId("autoAttackButton").addEventListener("click", async () => {
         const button = byId("autoAttackButton");
+        const strategy = byId("attackStrategy").value;
+        const limit = strategy === "poisonedrag" ? 5 : 3;
         const common = {
           query: byId("attackQuestion").value.trim(),
           expected_answer: byId("expectedAnswer").value.trim(),
@@ -1157,7 +1256,7 @@
           const baseline = await request("/answer", {
             query: common.query,
             sources: ["local_db"],
-            limit: 3,
+            limit,
             mode: "defended",
           });
           byId("baselineAnswer").className = "result-answer";
@@ -1168,16 +1267,29 @@
           );
           byId("baselineStatus").textContent = "완료";
 
-          const result = await request("/experiments/keyword-stuffing", {
-            ...common,
-            repetitions: Number(byId("repetitions").value),
-            include_prompt_injection:
-              byId("includePromptInjection").checked,
-            limit: 3,
-          });
-          attackDocumentId = result.document_id;
-          byId("poisonText").value = result.poison_text;
+          const result = strategy === "poisonedrag"
+            ? await request("/experiments/poisoned-rag", {
+                ...common,
+                poison_ratio: Number(byId("poisonRatio").value),
+                limit,
+              })
+            : await request("/experiments/keyword-stuffing", {
+                ...common,
+                repetitions: Number(byId("repetitions").value),
+                include_prompt_injection:
+                  byId("includePromptInjection").checked,
+                limit,
+              });
+          attackDocumentIds = result.document_ids || [result.document_id];
+          byId("poisonText").value = result.selected_candidates
+            ? result.selected_candidates
+                .map((candidate, index) =>
+                  `[${index + 1}] ${candidate.text}`
+                )
+                .join("\n\n")
+            : result.poison_text;
           renderComparison(result.comparison);
+          renderDashboardMetrics(result.metrics, result.comparison);
           byId("experimentState").textContent = "AUTOMATION DONE";
         } catch (error) {
           byId("experimentState").textContent = "AUTOMATION ERROR";
@@ -1202,7 +1314,7 @@
             undefined,
             "DELETE"
           );
-          attackDocumentId = null;
+          attackDocumentIds = [];
           byId("experimentState").textContent =
             `RESET · ${result.deleted_count}개 삭제`;
           byId("experimentState").className = "badge safe";
@@ -1224,6 +1336,9 @@
           byId("attackRank").textContent = "—";
           byId("attackScore").textContent = "—";
           byId("defenseBlocked").textContent = "—";
+          byId("attackSuccessRate").textContent = "—";
+          byId("answerAccuracy").textContent = "—";
+          byId("poisonInTopK").textContent = "—";
         } catch (error) {
           byId("experimentState").textContent = "RESET ERROR";
           byId("experimentState").className = "badge danger";
@@ -1234,6 +1349,7 @@
         }
       });
 
+      syncAttackStrategy();
       checkHealth();
     </script>
   </body>

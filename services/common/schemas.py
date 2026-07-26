@@ -150,3 +150,47 @@ class KeywordStuffingResponse(BaseModel):
     include_prompt_injection: bool
     poison_text: str
     comparison: ExperimentComparisonResponse
+
+
+class PoisonedRAGRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=500)
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    poison_ratio: Literal[1, 2, 4, 6] = 2
+    limit: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "PoisonedRAGRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class PoisonedRAGCandidate(BaseModel):
+    document_id: str
+    text: str
+    relevance_score: float
+
+
+class AttackDashboardMetrics(BaseModel):
+    attack_success_rate: float
+    accuracy: float
+    poison_in_top_k: int
+    top_k: int
+    poison_retrieval_rate: float
+
+
+class PoisonedRAGResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    strategy: Literal["poisonedrag"] = "poisonedrag"
+    poison_ratio: Literal[1, 2, 4, 6]
+    generation_mode: Literal["llm", "hybrid", "fallback"]
+    generated_candidate_count: int
+    document_ids: list[str]
+    selected_candidates: list[PoisonedRAGCandidate]
+    metrics: AttackDashboardMetrics
+    comparison: ExperimentComparisonResponse

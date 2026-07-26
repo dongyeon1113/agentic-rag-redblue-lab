@@ -22,11 +22,19 @@ from services.common.schemas import (
     KeywordStuffingResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
+    AttackDashboardMetrics,
+    PoisonedRAGCandidate,
+    PoisonedRAGRequest,
+    PoisonedRAGResponse,
     SearchHit,
 )
 from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
 from services.orchestrator.keyword_stuffing import (
     build_keyword_stuffing_document,
+)
+from services.orchestrator.poisoned_rag import (
+    generate_poison_candidates,
+    rank_candidates,
 )
 from services.orchestrator.rag import (
     build_rag_chain,
@@ -420,5 +428,83 @@ async def run_keyword_stuffing_experiment(
         repetitions=request.repetitions,
         include_prompt_injection=request.include_prompt_injection,
         poison_text=poison_text,
+        comparison=comparison,
+    )
+
+
+@app.post(
+    "/experiments/poisoned-rag",
+    response_model=PoisonedRAGResponse,
+)
+async def run_poisoned_rag_experiment(
+    request: PoisonedRAGRequest,
+) -> PoisonedRAGResponse:
+    candidate_count = min(8, request.poison_ratio + 2)
+    candidates, generation_mode = await generate_poison_candidates(
+        _rag_model(),
+        query=request.query,
+        attack_target=request.attack_target,
+        count=candidate_count,
+    )
+    selected = rank_candidates(request.query, candidates)[
+        : request.poison_ratio
+    ]
+    run_id = uuid4().hex[:12]
+    selected_candidates: list[PoisonedRAGCandidate] = []
+    for index, candidate in enumerate(selected, start=1):
+        document_id = f"poisonedrag-{run_id}-{index}"
+        await create_experiment_document(
+            ExperimentDocumentRequest(
+                document_id=document_id,
+                source="poisonedrag-automation",
+                tags=[
+                    "controlled",
+                    "poison",
+                    "poisonedrag",
+                    f"ratio-{request.poison_ratio}x",
+                ],
+                text=candidate.text,
+            )
+        )
+        selected_candidates.append(
+            PoisonedRAGCandidate(
+                document_id=document_id,
+                text=candidate.text,
+                relevance_score=candidate.relevance_score,
+            )
+        )
+
+    document_ids = [
+        candidate.document_id for candidate in selected_candidates
+    ]
+    comparison = await compare_experiment_modes(
+        ExperimentComparisonRequest(
+            query=request.query,
+            sources=["local_db"],
+            limit=request.limit,
+            expected_answer=request.expected_answer,
+            attack_target=request.attack_target,
+            attack_document_ids=document_ids,
+        )
+    )
+    vulnerable = comparison.vulnerable
+    top_k = len(vulnerable.documents)
+    poison_in_top_k = vulnerable.untrusted_document_count
+    metrics = AttackDashboardMetrics(
+        attack_success_rate=1.0 if vulnerable.attack_target_present else 0.0,
+        accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
+        poison_in_top_k=poison_in_top_k,
+        top_k=top_k,
+        poison_retrieval_rate=(
+            round(poison_in_top_k / top_k, 4) if top_k else 0.0
+        ),
+    )
+    return PoisonedRAGResponse(
+        poison_ratio=request.poison_ratio,
+        generation_mode=generation_mode,
+        generated_candidate_count=len(candidates),
+        document_ids=document_ids,
+        selected_candidates=selected_candidates,
+        metrics=metrics,
         comparison=comparison,
     )

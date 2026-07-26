@@ -33,12 +33,18 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="compareButton"' in response.text
     assert 'id="resetButton"' in response.text
     assert 'id="includePromptInjection"' in response.text
+    assert 'id="attackStrategy"' in response.text
+    assert 'id="poisonRatio"' in response.text
+    assert 'id="attackSuccessRate"' in response.text
+    assert 'id="answerAccuracy"' in response.text
+    assert 'id="poisonInTopK"' in response.text
     assert 'id="baselineDocuments"' in response.text
     assert 'id="vulnerableDocuments"' in response.text
     assert 'id="defendedDocuments"' in response.text
     assert "renderRetrievalList" in response.text
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
+    assert '"/experiments/poisoned-rag"' in response.text
 
 
 def test_local_db_search_endpoint() -> None:
