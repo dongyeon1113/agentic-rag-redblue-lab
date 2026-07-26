@@ -27,8 +27,12 @@ def test_orchestrator_serves_demo_gui() -> None:
     response = TestClient(orchestrator_app).get("/demo")
 
     assert response.status_code == 200
-    assert "Agentic RAG Lab" in response.text
+    assert "Agentic RAG Security Lab" in response.text
     assert 'id="questionForm"' in response.text
+    assert 'id="injectButton"' in response.text
+    assert 'id="compareButton"' in response.text
+    assert '"/experiments/documents"' in response.text
+    assert '"/experiments/compare"' in response.text
 
 
 def test_local_db_search_endpoint() -> None:
