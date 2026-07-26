@@ -35,11 +35,13 @@ def create_chat_model(
     model: str,
     base_url: str,
     temperature: float,
+    num_predict: int,
 ) -> ChatOllama:
     return ChatOllama(
         model=model,
         base_url=base_url,
         temperature=temperature,
+        num_predict=num_predict,
     )
 
 

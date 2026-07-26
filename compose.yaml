@@ -81,6 +81,7 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-256}
       RAG_CONTEXT_LIMIT: ${RAG_CONTEXT_LIMIT:-6}
       LOCAL_DB_AGENT_URL: http://local-db-agent:8000
       GMAIL_AGENT_URL: http://gmail-agent:8000

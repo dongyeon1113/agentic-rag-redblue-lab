@@ -41,6 +41,7 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
 RAG_CONTEXT_LIMIT = int(os.getenv("RAG_CONTEXT_LIMIT", "6"))
 AGENT_URLS = {
     "local_db": os.getenv("LOCAL_DB_AGENT_URL", "http://localhost:8001"),
@@ -63,6 +64,7 @@ def _rag_model():
         model=OLLAMA_MODEL,
         base_url=OLLAMA_BASE_URL,
         temperature=OLLAMA_TEMPERATURE,
+        num_predict=OLLAMA_NUM_PREDICT,
     )
 
 
