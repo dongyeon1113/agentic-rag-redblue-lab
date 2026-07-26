@@ -101,6 +101,16 @@ class ChromaDocumentStore:
     def count(self) -> int:
         return self.vector_store._collection.count()
 
+    def delete_untrusted_documents(self) -> int:
+        records = self.vector_store.get(
+            where={"trust": "untrusted"},
+            include=[],
+        )
+        document_ids = [str(item) for item in records.get("ids", [])]
+        if document_ids:
+            self.vector_store.delete(ids=document_ids)
+        return len(document_ids)
+
     @staticmethod
     def _decode_tags(value: object) -> list[str]:
         if not isinstance(value, str):

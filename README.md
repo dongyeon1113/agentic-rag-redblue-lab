@@ -150,6 +150,17 @@ curl -X POST http://localhost:8000/experiments/keyword-stuffing \
   }'
 ```
 
+Remove all `untrusted` experiment documents while preserving the original
+trusted dataset:
+
+```bash
+curl -X DELETE http://localhost:8000/experiments/documents
+```
+
+The demo GUI exposes the same action as **실험 데이터 초기화**. It is useful
+between repeated attack runs so previous poison documents do not affect the
+next baseline.
+
 Use `GET /agents` for search-agent health and `GET /model` for Ollama model
 readiness.
 

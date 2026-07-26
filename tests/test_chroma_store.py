@@ -40,3 +40,25 @@ def test_chroma_store_persists_without_duplicate_documents(tmp_path: Path) -> No
 
     assert first_store.count() == 3
     assert second_store.count() == 3
+
+
+def test_chroma_store_deletes_only_untrusted_documents(tmp_path: Path) -> None:
+    store = ChromaDocumentStore(
+        PROJECT_ROOT / "datasets/sample/nq_sample.json",
+        collection_name="test-reset",
+        persist_directory=tmp_path / "chroma",
+    )
+    store.add_document(
+        document_id="poison-test-1",
+        source="red-team-test",
+        trust="untrusted",
+        tags=["poison"],
+        text="Controlled poison document.",
+    )
+
+    deleted_count = store.delete_untrusted_documents()
+
+    assert deleted_count == 1
+    assert store.count() == 3
+    assert not store.contains("poison-test-1")
+    assert store.contains("nq-sample-001")

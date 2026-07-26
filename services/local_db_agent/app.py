@@ -7,6 +7,7 @@ from services.common.chroma_store import ChromaDocumentStore
 from services.common.schemas import (
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
+    ExperimentResetResponse,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -51,5 +52,24 @@ async def create_experiment_document(
         document_id=request.document_id,
         source=request.source,
         tags=request.tags,
+        document_count=store.count(),
+    )
+
+
+@app.delete(
+    "/documents/untrusted",
+    response_model=ExperimentResetResponse,
+)
+async def delete_untrusted_documents() -> ExperimentResetResponse:
+    store = app.state.document_store
+    if not isinstance(store, ChromaDocumentStore):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Experiment document deletion requires the Chroma backend.",
+        )
+
+    deleted_count = store.delete_untrusted_documents()
+    return ExperimentResetResponse(
+        deleted_count=deleted_count,
         document_count=store.count(),
     )

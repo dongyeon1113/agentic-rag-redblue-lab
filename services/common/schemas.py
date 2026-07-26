@@ -61,6 +61,12 @@ class ExperimentDocumentResponse(BaseModel):
     document_count: int
 
 
+class ExperimentResetResponse(BaseModel):
+    status: Literal["reset"] = "reset"
+    deleted_count: int
+    document_count: int
+
+
 class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)

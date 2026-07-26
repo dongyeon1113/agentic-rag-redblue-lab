@@ -31,6 +31,7 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="questionForm"' in response.text
     assert 'id="injectButton"' in response.text
     assert 'id="compareButton"' in response.text
+    assert 'id="resetButton"' in response.text
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
 
@@ -121,6 +122,28 @@ def test_orchestrator_forwards_experiment_document(monkeypatch) -> None:
     assert response.status_code == 201
     assert response.json()["document_id"] == payload["document_id"]
     assert response.json()["trust"] == "untrusted"
+
+
+def test_orchestrator_resets_experiment_documents(monkeypatch) -> None:
+    async def fake_request_json(client, method, url, **kwargs):
+        assert method == "DELETE"
+        assert url.endswith("/documents/untrusted")
+        return {
+            "status": "reset",
+            "deleted_count": 4,
+            "document_count": 3,
+        }
+
+    monkeypatch.setattr(orchestrator_module, "_request_json", fake_request_json)
+
+    response = TestClient(orchestrator_app).delete("/experiments/documents")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "reset",
+        "deleted_count": 4,
+        "document_count": 3,
+    }
 
 
 def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:

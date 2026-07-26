@@ -641,6 +641,16 @@
                     비교
                   </button>
                 </div>
+                <div class="step">
+                  <span class="step-number">04</span>
+                  <div>
+                    <strong>실험 데이터 초기화</strong>
+                    <small>추가된 untrusted 문서만 모두 삭제</small>
+                  </div>
+                  <button class="button secondary" id="resetButton" type="button">
+                    초기화
+                  </button>
+                </div>
               </div>
 
               <div class="automation">
@@ -732,9 +742,9 @@
         return node.innerHTML;
       }
 
-      async function request(path, payload) {
+      async function request(path, payload, method) {
         const response = await fetch(path, {
-          method: payload ? "POST" : "GET",
+          method: method || (payload ? "POST" : "GET"),
           headers: payload ? { "Content-Type": "application/json" } : {},
           body: payload ? JSON.stringify(payload) : undefined,
         });
@@ -988,6 +998,48 @@
           byId("experimentState").textContent = "AUTOMATION DONE";
         } catch (error) {
           byId("experimentState").textContent = "AUTOMATION ERROR";
+          byId("experimentState").className = "badge danger";
+          byId("vulnerableAnswer").className = "result-answer error";
+          byId("vulnerableAnswer").textContent = error.message;
+        } finally {
+          setBusy(button, false);
+        }
+      });
+
+      byId("resetButton").addEventListener("click", async () => {
+        if (!window.confirm("추가된 untrusted 실험 문서를 모두 삭제할까요?")) {
+          return;
+        }
+
+        const button = byId("resetButton");
+        setBusy(button, true, "초기화 중");
+        try {
+          const result = await request(
+            "/experiments/documents",
+            undefined,
+            "DELETE"
+          );
+          attackDocumentId = null;
+          byId("experimentState").textContent =
+            `RESET · ${result.deleted_count}개 삭제`;
+          byId("experimentState").className = "badge safe";
+          byId("baselineStatus").textContent = "대기";
+          byId("vulnerableStatus").textContent = "대기";
+          byId("defendedStatus").textContent = "대기";
+          byId("baselineAnswer").className = "result-answer placeholder";
+          byId("baselineAnswer").textContent =
+            "초기화 완료. 기준 답변을 다시 실행하세요.";
+          byId("vulnerableAnswer").className = "result-answer placeholder";
+          byId("vulnerableAnswer").textContent =
+            "Poison 문서가 모두 삭제되었습니다.";
+          byId("defendedAnswer").className = "result-answer placeholder";
+          byId("defendedAnswer").textContent =
+            "새 실험을 실행하면 결과가 표시됩니다.";
+          byId("attackRank").textContent = "—";
+          byId("attackScore").textContent = "—";
+          byId("defenseBlocked").textContent = "—";
+        } catch (error) {
+          byId("experimentState").textContent = "RESET ERROR";
           byId("experimentState").className = "badge danger";
           byId("vulnerableAnswer").className = "result-answer error";
           byId("vulnerableAnswer").textContent = error.message;
