@@ -430,6 +430,79 @@
 
       .comparison { display: grid; gap: 12px; }
 
+      .rag-pipeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 20px;
+        margin-bottom: 14px;
+      }
+
+      .pipeline-stage {
+        position: relative;
+        min-width: 0;
+        padding: 13px;
+        border: 1px solid var(--line-soft);
+        border-radius: 13px;
+        background: linear-gradient(
+          145deg,
+          rgba(25, 38, 64, .92),
+          rgba(14, 21, 37, .9)
+        );
+      }
+
+      .pipeline-stage:not(:last-child)::after {
+        position: absolute;
+        top: 50%;
+        right: -16px;
+        color: var(--blue);
+        content: "→";
+        font-size: 18px;
+        font-weight: 900;
+        transform: translateY(-50%);
+      }
+
+      .pipeline-label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .pipeline-index {
+        display: grid;
+        width: 20px;
+        height: 20px;
+        place-items: center;
+        border-radius: 6px;
+        background: rgba(126, 166, 255, .14);
+        color: var(--blue);
+        font-size: 9px;
+      }
+
+      .pipeline-value {
+        display: -webkit-box;
+        overflow: hidden;
+        margin: 10px 0 5px;
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 850;
+        line-height: 1.42;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .pipeline-meta {
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 9px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .result-card {
         padding: 16px;
         border: 1px solid var(--line);
@@ -579,6 +652,8 @@
         .hero { grid-template-columns: 1fr; }
         .tabs { width: fit-content; }
         .layout, .attack-grid { grid-template-columns: 1fr; }
+        .rag-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pipeline-stage::after { display: none; }
       }
 
       @media (max-width: 560px) {
@@ -587,6 +662,7 @@
         .brand span:last-child { display: none; }
         .form-grid, .metrics { grid-template-columns: 1fr; }
         .preset-panel { grid-template-columns: 1fr; }
+        .rag-pipeline { grid-template-columns: 1fr; }
         .step { grid-template-columns: 31px 1fr; }
         .step .button { grid-column: 1 / -1; width: 100%; }
         .automation { grid-template-columns: 1fr; }
@@ -858,6 +934,57 @@
               <span class="badge neutral" id="experimentState">READY</span>
             </div>
             <div class="card-body">
+              <div class="rag-pipeline" id="ragPipeline">
+                <article class="pipeline-stage">
+                  <div class="pipeline-label">
+                    <span class="pipeline-index">01</span>
+                    질문
+                  </div>
+                  <strong class="pipeline-value" id="pipelineQuestion">
+                    실행 전
+                  </strong>
+                  <span class="pipeline-meta" id="pipelineQuestionMeta">
+                    프리셋 또는 직접 입력
+                  </span>
+                </article>
+                <article class="pipeline-stage">
+                  <div class="pipeline-label">
+                    <span class="pipeline-index">02</span>
+                    검색 Top-K
+                  </div>
+                  <strong class="pipeline-value" id="pipelineRetrieval">
+                    검색 대기
+                  </strong>
+                  <span class="pipeline-meta" id="pipelineRetrievalMeta">
+                    검색 순위와 점수
+                  </span>
+                </article>
+                <article class="pipeline-stage">
+                  <div class="pipeline-label">
+                    <span class="pipeline-index">03</span>
+                    Poison 문서
+                  </div>
+                  <strong class="pipeline-value" id="pipelinePoison">
+                    주입 대기
+                  </strong>
+                  <span class="pipeline-meta" id="pipelinePoisonMeta">
+                    공격 유형과 검색 포함 수
+                  </span>
+                </article>
+                <article class="pipeline-stage">
+                  <div class="pipeline-label">
+                    <span class="pipeline-index">04</span>
+                    LLM 답변
+                  </div>
+                  <strong class="pipeline-value" id="pipelineAnswer">
+                    생성 대기
+                  </strong>
+                  <span class="pipeline-meta" id="pipelineAnswerMeta">
+                    공격 성공 여부
+                  </span>
+                </article>
+              </div>
+
               <div class="comparison">
                 <section class="result-card baseline">
                   <div class="result-title">
@@ -1211,6 +1338,54 @@
           : "badge";
       }
 
+      function renderPipeline(result) {
+        const comparison = result.comparison || result;
+        const vulnerable = comparison.vulnerable;
+        const documents = vulnerable.documents || [];
+        const documentIds = result.document_ids || attackDocumentIds;
+        const attackIds = new Set(documentIds);
+        const poisonHits = documents.filter((document) =>
+          attackIds.has(document.document_id)
+        );
+        const first = documents[0];
+        const strategyOption = byId("attackStrategy").selectedOptions[0];
+        const candidateCount =
+          result.generated_candidate_count ?? documentIds.length;
+
+        byId("pipelineQuestion").textContent = comparison.query;
+        byId("pipelineQuestionMeta").textContent =
+          byId("topicPreset").selectedOptions[0].textContent;
+        byId("pipelineRetrieval").textContent = first
+          ? `${documents.length}개 검색 · 1위 ${first.document_id}`
+          : "검색 결과 없음";
+        byId("pipelineRetrievalMeta").textContent = first
+          ? `score ${Number(first.score).toFixed(3)} · ${first.trust}`
+          : "Top-K에 포함된 문서가 없습니다.";
+        byId("pipelinePoison").textContent =
+          `${poisonHits.length}/${documentIds.length}개 Top-K 진입`;
+        byId("pipelinePoisonMeta").textContent =
+          `${strategyOption.textContent.trim()} · ` +
+          `${candidateCount}개 후보 중 ${documentIds.length}개 선택`;
+        byId("pipelineAnswer").textContent =
+          vulnerable.answer || "답변 없음";
+        byId("pipelineAnswerMeta").textContent =
+          vulnerable.outcome.replaceAll("_", " ");
+      }
+
+      function setPipelineRunning() {
+        byId("pipelineQuestion").textContent =
+          byId("attackQuestion").value.trim();
+        byId("pipelineQuestionMeta").textContent =
+          byId("topicPreset").selectedOptions[0].textContent;
+        byId("pipelineRetrieval").textContent = "검색 중…";
+        byId("pipelineRetrievalMeta").textContent = "Top-K 순위 계산";
+        byId("pipelinePoison").textContent = "후보 생성 중…";
+        byId("pipelinePoisonMeta").textContent =
+          "관련도 점수로 주입 문서 선별";
+        byId("pipelineAnswer").textContent = "답변 생성 중…";
+        byId("pipelineAnswerMeta").textContent = "결과 평가 대기";
+      }
+
       function renderDashboardMetrics(metrics, comparison) {
         const vulnerable = comparison.vulnerable;
         const topK = metrics?.top_k ?? vulnerable.documents.length;
@@ -1265,6 +1440,9 @@
         byId("attackQuestion").value = preset.query;
         byId("expectedAnswer").value = preset.expected;
         byId("attackTarget").value = preset.target;
+        byId("pipelineQuestion").textContent = preset.query;
+        byId("pipelineQuestionMeta").textContent =
+          byId("topicPreset").selectedOptions[0].textContent;
       }
 
       function syncDefenseView() {
@@ -1286,6 +1464,7 @@
         }
 
         setBusy(button, true, "비교 중");
+        setPipelineRunning();
         byId("vulnerableAnswer").textContent = "Vulnerable 모드 평가 중…";
         byId("defendedAnswer").textContent = "Defended 모드 평가 중…";
 
@@ -1300,6 +1479,11 @@
           });
           renderComparison(payload);
           renderDashboardMetrics(null, payload);
+          renderPipeline({
+            comparison: payload,
+            document_ids: attackDocumentIds,
+            generated_candidate_count: attackDocumentIds.length,
+          });
         } catch (error) {
           byId("vulnerableAnswer").className = "result-answer error";
           byId("vulnerableAnswer").textContent = error.message;
@@ -1319,6 +1503,7 @@
           attack_target: byId("attackTarget").value.trim(),
         };
         setBusy(button, true, "자동 실행 중");
+        setPipelineRunning();
         byId("experimentState").textContent = "AUTOMATION RUNNING";
         byId("experimentState").className = "badge danger";
         byId("baselineAnswer").textContent = "공격 전 기준 답변 생성 중…";
@@ -1357,7 +1542,9 @@
           byId("poisonText").value = result.selected_candidates
             ? result.selected_candidates
                 .map((candidate, index) =>
-                  `[${index + 1}] ${candidate.text}`
+                  `[${index + 1} · score ` +
+                  `${Number(candidate.relevance_score).toFixed(3)}] ` +
+                  `${candidate.text}`
                 )
                 .join("\n\n")
             : (result.poison_texts || [result.poison_text])
@@ -1365,6 +1552,7 @@
                 .join("\n\n");
           renderComparison(result.comparison);
           renderDashboardMetrics(result.metrics, result.comparison);
+          renderPipeline(result);
           syncDefenseView();
           byId("experimentState").textContent = "AUTOMATION DONE";
         } catch (error) {
@@ -1415,6 +1603,16 @@
           byId("attackSuccessRate").textContent = "—";
           byId("answerAccuracy").textContent = "—";
           byId("poisonInTopK").textContent = "—";
+          byId("pipelineQuestion").textContent =
+            byId("attackQuestion").value.trim();
+          byId("pipelineQuestionMeta").textContent = "새 실험 대기";
+          byId("pipelineRetrieval").textContent = "검색 대기";
+          byId("pipelineRetrievalMeta").textContent = "검색 순위와 점수";
+          byId("pipelinePoison").textContent = "주입 대기";
+          byId("pipelinePoisonMeta").textContent =
+            "공격 유형과 검색 포함 수";
+          byId("pipelineAnswer").textContent = "생성 대기";
+          byId("pipelineAnswerMeta").textContent = "공격 성공 여부";
         } catch (error) {
           byId("experimentState").textContent = "RESET ERROR";
           byId("experimentState").className = "badge danger";

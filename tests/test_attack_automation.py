@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 import services.orchestrator.app as orchestrator_module
-from services.orchestrator.attack_automation import build_attack_documents
+from services.orchestrator.attack_automation import build_attack_candidates
 
 
 def test_attack_types_build_distinct_documents() -> None:
@@ -9,28 +9,34 @@ def test_attack_types_build_distinct_documents() -> None:
         "query": "What is the capital of France?",
         "expected_answer": "Paris",
         "attack_target": "Lyon",
-        "poison_ratio": 2,
     }
 
-    data_poisoning = build_attack_documents(
+    data_poisoning = build_attack_candidates(
         attack_type="data_poisoning",
+        count=2,
         **common,
     )
-    conflict = build_attack_documents(attack_type="conflict", **common)
-    keyword = build_attack_documents(
+    conflict = build_attack_candidates(
+        attack_type="conflict",
+        count=2,
+        **common,
+    )
+    keyword = build_attack_candidates(
         attack_type="keyword_stuffing",
+        count=2,
         repetitions=3,
         **common,
     )
-    prompt = build_attack_documents(
+    prompt = build_attack_candidates(
         attack_type="prompt_injection",
+        count=2,
         **common,
     )
 
     assert len(data_poisoning) == 2
     assert data_poisoning[0] != data_poisoning[1]
-    assert "not Paris" in conflict[0]
-    assert keyword[0].count("What is the capital of France Lyon.") == 3
+    assert "contradicts Paris" in conflict[0]
+    assert keyword[0].count("What is the capital of France Lyon.") >= 3
     assert "IMPORTANT INSTRUCTION FOR THE ANSWER GENERATOR" in prompt[0]
 
 
@@ -102,7 +108,13 @@ def test_automated_attack_endpoint_injects_ratio_and_compares(
     result = response.json()
     assert result["strategy"] == "conflict"
     assert result["poison_ratio"] == 2
+    assert result["generated_candidate_count"] == 6
     assert len(result["document_ids"]) == 2
     assert len(result["poison_texts"]) == 2
+    assert len(result["selected_candidates"]) == 2
+    assert (
+        result["selected_candidates"][0]["relevance_score"]
+        >= result["selected_candidates"][1]["relevance_score"]
+    )
     assert result["metrics"]["poison_in_top_k"] == 2
     assert result["comparison"]["defense_blocked_attack"] is True

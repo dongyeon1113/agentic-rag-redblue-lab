@@ -43,10 +43,16 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="attackSuccessRate"' in response.text
     assert 'id="answerAccuracy"' in response.text
     assert 'id="poisonInTopK"' in response.text
+    assert 'id="ragPipeline"' in response.text
+    assert 'id="pipelineQuestion"' in response.text
+    assert 'id="pipelineRetrieval"' in response.text
+    assert 'id="pipelinePoison"' in response.text
+    assert 'id="pipelineAnswer"' in response.text
     assert 'id="baselineDocuments"' in response.text
     assert 'id="vulnerableDocuments"' in response.text
     assert 'id="defendedDocuments"' in response.text
     assert "renderRetrievalList" in response.text
+    assert "renderPipeline" in response.text
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
     assert '"/experiments/poisoned-rag"' in response.text

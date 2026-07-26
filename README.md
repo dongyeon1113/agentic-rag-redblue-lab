@@ -190,7 +190,11 @@ curl -X POST http://localhost:8000/experiments/automated-attack \
 ```
 
 The demo GUI includes topic presets for the committed NQ sample facts and
-separate selectors for attack type, defense display, and poison ratio.
+separate selectors for attack type, defense display, and poison ratio. Every
+automated attack creates a larger pool of differently worded candidates, ranks
+them by retrieval relevance, and injects only the requested top-scoring
+passages. The result view visualizes the live path from question through Top-K
+retrieval and poison selection to the final LLM answer.
 
 Remove all `untrusted` experiment documents while preserving the original
 trusted dataset:

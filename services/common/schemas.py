@@ -230,7 +230,9 @@ class AutomatedAttackResponse(BaseModel):
         "prompt_injection",
     ]
     poison_ratio: Literal[1, 2, 4, 6]
+    generated_candidate_count: int
     document_ids: list[str]
     poison_texts: list[str]
+    selected_candidates: list[PoisonedRAGCandidate]
     metrics: AttackDashboardMetrics
     comparison: ExperimentComparisonResponse

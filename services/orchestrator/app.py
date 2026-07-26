@@ -30,7 +30,7 @@ from services.common.schemas import (
     PoisonedRAGResponse,
     SearchHit,
 )
-from services.orchestrator.attack_automation import build_attack_documents
+from services.orchestrator.attack_automation import build_attack_candidates
 from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
 from services.orchestrator.keyword_stuffing import (
     build_keyword_stuffing_document,
@@ -524,17 +524,22 @@ async def run_poisoned_rag_experiment(
 async def run_automated_attack_experiment(
     request: AutomatedAttackRequest,
 ) -> AutomatedAttackResponse:
-    poison_texts = build_attack_documents(
+    candidate_count = min(10, request.poison_ratio + 4)
+    candidates = build_attack_candidates(
         attack_type=request.attack_type,
         query=request.query,
         expected_answer=request.expected_answer,
         attack_target=request.attack_target,
-        poison_ratio=request.poison_ratio,
+        count=candidate_count,
         repetitions=request.repetitions,
     )
+    selected = rank_candidates(request.query, candidates)[
+        : request.poison_ratio
+    ]
     run_id = uuid4().hex[:12]
     document_ids: list[str] = []
-    for index, poison_text in enumerate(poison_texts, start=1):
+    selected_candidates: list[PoisonedRAGCandidate] = []
+    for index, candidate in enumerate(selected, start=1):
         document_id = f"{request.attack_type}-{run_id}-{index}"
         await create_experiment_document(
             ExperimentDocumentRequest(
@@ -546,10 +551,17 @@ async def run_automated_attack_experiment(
                     request.attack_type,
                     f"ratio-{request.poison_ratio}x",
                 ],
-                text=poison_text,
+                text=candidate.text,
             )
         )
         document_ids.append(document_id)
+        selected_candidates.append(
+            PoisonedRAGCandidate(
+                document_id=document_id,
+                text=candidate.text,
+                relevance_score=candidate.relevance_score,
+            )
+        )
 
     comparison = await compare_experiment_modes(
         ExperimentComparisonRequest(
@@ -580,8 +592,12 @@ async def run_automated_attack_experiment(
     return AutomatedAttackResponse(
         strategy=request.attack_type,
         poison_ratio=request.poison_ratio,
+        generated_candidate_count=len(candidates),
         document_ids=document_ids,
-        poison_texts=poison_texts,
+        poison_texts=[
+            candidate.text for candidate in selected_candidates
+        ],
+        selected_candidates=selected_candidates,
         metrics=metrics,
         comparison=comparison,
     )
