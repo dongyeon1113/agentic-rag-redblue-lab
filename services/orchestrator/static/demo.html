@@ -771,10 +771,277 @@
         line-height: 1.5;
       }
 
+      /* Dashboard layout inspired by visual RAG experiment tools. */
+      .app {
+        width: min(1520px, calc(100% - 36px));
+        padding-top: 18px;
+      }
+
+      .topbar {
+        position: sticky;
+        z-index: 20;
+        top: 0;
+        min-height: 58px;
+        margin-bottom: 18px;
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(7, 11, 20, .9);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, .24);
+        backdrop-filter: blur(18px);
+      }
+
+      .hero {
+        align-items: center;
+        margin-bottom: 18px;
+        padding: 0 4px;
+      }
+
+      .hero h1 {
+        font-size: clamp(27px, 3.2vw, 42px);
+        letter-spacing: -.04em;
+      }
+
+      .hero p:last-child {
+        margin-top: 8px;
+        font-size: 13px;
+      }
+
+      .kicker {
+        margin-bottom: 6px;
+        font-size: 10px;
+      }
+
+      .tabs {
+        border-radius: 12px;
+      }
+
+      .attack-grid {
+        grid-template-columns: 350px minmax(0, 1fr);
+        align-items: start;
+        gap: 14px;
+      }
+
+      .attack-grid > .card:first-child {
+        position: sticky;
+        top: 76px;
+        max-height: calc(100vh - 94px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line) transparent;
+      }
+
+      .attack-grid > .card:first-child .card-header {
+        position: sticky;
+        z-index: 4;
+        top: 0;
+        background: rgba(14, 21, 37, .97);
+        backdrop-filter: blur(14px);
+      }
+
+      .attack-grid > .card:first-child .card-body {
+        padding: 16px;
+      }
+
+      .attack-grid > .card:nth-child(2) .card-header {
+        min-height: 72px;
+      }
+
+      .attack-grid > .card:nth-child(2) .card-body {
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .attack-grid > .card:nth-child(2) .rag-pipeline { order: 1; }
+      .attack-grid > .card:nth-child(2) .metrics { order: 2; }
+      .attack-grid > .card:nth-child(2) .comparison { order: 3; }
+      .attack-grid > .card:nth-child(2) .ratio-analysis { order: 4; }
+
+      .preset-panel {
+        grid-template-columns: 1fr;
+        gap: 11px;
+        margin-bottom: 14px;
+        padding: 12px;
+      }
+
+      .notice {
+        margin-bottom: 12px;
+        padding: 9px 10px;
+        font-size: 10px;
+      }
+
+      .form-grid {
+        gap: 8px;
+      }
+
+      .form-group {
+        margin-bottom: 11px;
+      }
+
+      input[type="text"], input[type="number"], select, textarea {
+        padding: 10px 11px;
+        border-radius: 9px;
+        font-size: 12px;
+      }
+
+      #poisonText {
+        min-height: 92px;
+      }
+
+      .steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 13px;
+      }
+
+      .step {
+        grid-template-columns: 25px minmax(0, 1fr);
+        gap: 8px;
+        padding: 9px;
+      }
+
+      .step-number {
+        width: 25px;
+        height: 25px;
+        border-radius: 7px;
+        font-size: 9px;
+      }
+
+      .step strong { font-size: 11px; }
+      .step small { display: none; }
+      .step .button {
+        grid-column: 1 / -1;
+        width: 100%;
+        min-height: 32px;
+        padding: 6px 9px;
+      }
+
+      .automation {
+        grid-template-columns: 1fr;
+        gap: 9px;
+        margin-top: 12px;
+        padding: 11px;
+      }
+
+      .automation-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .automation-actions .button {
+        min-height: 38px;
+        padding: 8px 9px;
+        font-size: 11px;
+      }
+
+      .rag-pipeline {
+        gap: 28px;
+        margin: 0;
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: rgba(7, 11, 20, .36);
+      }
+
+      .pipeline-stage {
+        min-height: 116px;
+        padding: 14px;
+        text-align: center;
+      }
+
+      .pipeline-stage:not(:last-child)::after {
+        right: -22px;
+      }
+
+      .pipeline-label {
+        justify-content: center;
+      }
+
+      .pipeline-index {
+        border-radius: 50%;
+      }
+
+      .pipeline-value {
+        margin-top: 14px;
+        font-size: 13px;
+      }
+
+      .pipeline-meta {
+        display: block;
+        font-size: 10px;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0;
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 11px;
+        text-align: center;
+      }
+
+      .metric span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .metric strong {
+        color: var(--text);
+        font-size: 16px;
+      }
+
+      .comparison {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: start;
+        gap: 10px;
+      }
+
+      .result-card {
+        min-width: 0;
+        padding: 14px;
+      }
+
+      .result-answer {
+        min-height: 78px;
+        font-size: 13px;
+      }
+
+      .retrieval-panel {
+        max-height: 420px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line) transparent;
+      }
+
+      .retrieval-item {
+        grid-template-columns: 24px minmax(0, 1fr);
+      }
+
+      .retrieval-score {
+        grid-column: 2;
+        justify-self: start;
+      }
+
+      @media (max-width: 1180px) {
+        .attack-grid { grid-template-columns: 310px minmax(0, 1fr); }
+        .comparison { grid-template-columns: 1fr; }
+        .metrics { grid-template-columns: repeat(3, 1fr); }
+      }
+
       @media (max-width: 860px) {
         .hero { grid-template-columns: 1fr; }
         .tabs { width: fit-content; }
         .layout, .attack-grid { grid-template-columns: 1fr; }
+        .attack-grid > .card:first-child {
+          position: static;
+          max-height: none;
+        }
+        .attack-grid > .card:first-child .card-header { position: static; }
         .rag-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .pipeline-stage::after { display: none; }
       }
@@ -815,22 +1082,22 @@
       <section class="hero">
         <div>
           <p class="kicker">AGENTIC RAG SECURITY LAB</p>
-          <h1>RAG 공격·방어 실험</h1>
+          <h1>RAG 공격 실험 대시보드</h1>
           <p>
-            일반 질의, Poison 문서 삽입, Vulnerable·Defended 결과 비교
+            공격 설정부터 검색 순위, LLM 답변 변화까지 한 화면에서 확인합니다.
           </p>
         </div>
         <nav class="tabs" aria-label="화면 선택">
-          <button class="tab active" type="button" data-view="queryView">
+          <button class="tab" type="button" data-view="queryView">
             일반 질의
           </button>
-          <button class="tab" type="button" data-view="attackView">
+          <button class="tab active" type="button" data-view="attackView">
             공격 실험
           </button>
         </nav>
       </section>
 
-      <section class="view" id="queryView">
+      <section class="view" id="queryView" hidden>
         <div class="layout">
           <article class="card">
             <div class="card-header">
@@ -902,13 +1169,13 @@
         </div>
       </section>
 
-      <section class="view" id="attackView" hidden>
+      <section class="view" id="attackView">
         <div class="attack-grid">
           <article class="card">
             <div class="card-header">
               <div>
-                <h2>Poison 문서 실험</h2>
-                <p>통제된 문서를 삽입해 답변 변화를 측정합니다.</p>
+                <h2>실험 설정</h2>
+                <p>공격 조건과 실행 방식을 선택합니다.</p>
               </div>
               <span class="badge danger">RED TEAM</span>
             </div>
@@ -1071,8 +1338,8 @@
           <article class="card">
             <div class="card-header">
               <div>
-                <h2>Before / After 분석</h2>
-                <p>공격 성공 여부와 방어 효과를 확인합니다.</p>
+                <h2>Experiment Dashboard</h2>
+                <p>파이프라인, 검색 문서, 답변과 공격 지표를 확인합니다.</p>
               </div>
               <span class="badge neutral" id="experimentState">READY</span>
             </div>
