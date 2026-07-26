@@ -49,7 +49,7 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0"))
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "256"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
 RAG_CONTEXT_LIMIT = int(os.getenv("RAG_CONTEXT_LIMIT", "6"))
 AGENT_URLS = {
     "local_db": os.getenv("LOCAL_DB_AGENT_URL", "http://localhost:8001"),
@@ -489,7 +489,11 @@ async def run_poisoned_rag_experiment(
     )
     vulnerable = comparison.vulnerable
     top_k = len(vulnerable.documents)
-    poison_in_top_k = vulnerable.untrusted_document_count
+    selected_document_ids = set(document_ids)
+    poison_in_top_k = sum(
+        document.document_id in selected_document_ids
+        for document in vulnerable.documents
+    )
     metrics = AttackDashboardMetrics(
         attack_success_rate=1.0 if vulnerable.attack_target_present else 0.0,
         accuracy=1.0 if vulnerable.expected_answer_present else 0.0,

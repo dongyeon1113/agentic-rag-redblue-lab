@@ -59,6 +59,15 @@ def test_poisoned_rag_endpoint_generates_selects_and_compares(
                 "answer": "Lyon.",
                 "documents": [
                     {
+                        "document_id": "old-poison",
+                        "source": "earlier-experiment",
+                        "trust": "untrusted",
+                        "tags": ["poison"],
+                        "text": "An older unrelated experiment.",
+                        "score": 0.99,
+                    }
+                ] + [
+                    {
                         "document_id": item["document_id"],
                         "source": item["source"],
                         "trust": "untrusted",
@@ -118,7 +127,7 @@ def test_poisoned_rag_endpoint_generates_selects_and_compares(
         "attack_success_rate": 1.0,
         "accuracy": 0.0,
         "poison_in_top_k": 2,
-        "top_k": 2,
-        "poison_retrieval_rate": 1.0,
+        "top_k": 3,
+        "poison_retrieval_rate": 0.6667,
     }
     assert result["comparison"]["defense_blocked_attack"] is True
