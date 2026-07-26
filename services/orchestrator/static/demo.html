@@ -1928,7 +1928,7 @@
         const poisonCount =
           metrics?.poison_in_top_k ?? vulnerable.untrusted_document_count;
         const asr = metrics?.attack_success_rate ??
-          (vulnerable.attack_target_present ? 1 : 0);
+          (vulnerable.outcome === "attack_succeeded" ? 1 : 0);
         const accuracy = metrics?.accuracy ??
           (vulnerable.expected_answer_present ? 1 : 0);
 

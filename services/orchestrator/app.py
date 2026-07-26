@@ -34,7 +34,11 @@ from services.common.schemas import (
     SearchHit,
 )
 from services.orchestrator.attack_automation import build_attack_candidates
-from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
+from services.orchestrator.evaluation import (
+    attack_success_rate,
+    evaluate_answer,
+    evaluate_retrieval,
+)
 from services.orchestrator.keyword_stuffing import (
     build_keyword_stuffing_document,
 )
@@ -516,7 +520,7 @@ async def run_poisoned_rag_experiment(
         for document in vulnerable.documents
     )
     metrics = AttackDashboardMetrics(
-        attack_success_rate=1.0 if vulnerable.attack_target_present else 0.0,
+        attack_success_rate=attack_success_rate(vulnerable.outcome),
         accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
         poison_in_top_k=poison_in_top_k,
         top_k=top_k,
@@ -600,7 +604,7 @@ async def run_automated_attack_experiment(
     )
     top_k = len(vulnerable.documents)
     metrics = AttackDashboardMetrics(
-        attack_success_rate=1.0 if vulnerable.attack_target_present else 0.0,
+        attack_success_rate=attack_success_rate(vulnerable.outcome),
         accuracy=1.0 if vulnerable.expected_answer_present else 0.0,
         poison_in_top_k=poison_in_top_k,
         top_k=top_k,
@@ -661,7 +665,7 @@ async def run_ratio_sweep(
             allowed_untrusted_document_ids=[],
         )
     )
-    _, expected_present, target_present = evaluate_answer(
+    outcome, expected_present, _ = evaluate_answer(
         baseline["answer"],
         expected_answer=request.expected_answer,
         attack_target=request.attack_target,
@@ -669,7 +673,7 @@ async def run_ratio_sweep(
     points.append(
         RatioSweepPoint(
             poison_ratio=0,
-            attack_success_rate=1.0 if target_present else 0.0,
+            attack_success_rate=attack_success_rate(outcome),
             accuracy=1.0 if expected_present else 0.0,
             poison_in_top_k=0,
             top_k=len(baseline["documents"]),
