@@ -50,11 +50,12 @@ def main() -> None:
             "query": "What is the capital of France?",
             "sources": ["local_db"],
             "limit": 3,
-            "mode": "vulnerable",
+            "mode": "defended",
         },
     )
     assert "Paris" in answer["answer"], answer
     assert answer["documents"], answer
+    assert all(item["trust"] == "trusted" for item in answer["documents"]), answer
 
     print("Smoke test passed.")
     print(f"Model: {model['model']}")
