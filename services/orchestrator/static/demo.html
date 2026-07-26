@@ -200,7 +200,7 @@
         font-weight: 800;
       }
 
-      input[type="text"], textarea {
+      input[type="text"], input[type="number"], textarea {
         width: 100%;
         border: 1px solid var(--line);
         border-radius: 12px;
@@ -213,7 +213,7 @@
 
       textarea { min-height: 112px; resize: vertical; }
 
-      input[type="text"]:focus, textarea:focus {
+      input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
         border-color: var(--mint);
         box-shadow: 0 0 0 3px rgba(100, 224, 190, .11);
       }
@@ -345,6 +345,26 @@
 
       .steps { display: grid; gap: 10px; margin-top: 18px; }
 
+      .automation {
+        display: grid;
+        grid-template-columns: 92px 1fr auto;
+        align-items: end;
+        gap: 11px;
+        margin-top: 14px;
+        padding: 13px;
+        border: 1px solid rgba(255, 117, 136, .3);
+        border-radius: 13px;
+        background: rgba(67, 28, 39, .38);
+      }
+
+      .automation label { margin-bottom: 5px; }
+      .automation p {
+        margin: 0 0 4px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .automation small { color: var(--muted); }
+
       .step {
         display: grid;
         grid-template-columns: 31px 1fr auto;
@@ -442,6 +462,7 @@
         .form-grid, .metrics { grid-template-columns: 1fr; }
         .step { grid-template-columns: 31px 1fr; }
         .step .button { grid-column: 1 / -1; width: 100%; }
+        .automation { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -620,6 +641,20 @@
                     비교
                   </button>
                 </div>
+              </div>
+
+              <div class="automation">
+                <div>
+                  <label for="repetitions">반복 횟수</label>
+                  <input id="repetitions" type="number" min="1" max="50" value="8" />
+                </div>
+                <div>
+                  <p>Keyword Stuffing 자동화</p>
+                  <small>기준 답변부터 삽입·비교까지 한 번에 실행</small>
+                </div>
+                <button class="button attack" id="autoAttackButton" type="button">
+                  자동 실행
+                </button>
               </div>
             </div>
           </article>
@@ -820,7 +855,7 @@
             query: byId("attackQuestion").value.trim(),
             sources: ["local_db"],
             limit: 3,
-            mode: "vulnerable",
+            mode: "defended",
           });
           byId("baselineAnswer").className = "result-answer";
           byId("baselineAnswer").textContent = payload.answer;
@@ -861,6 +896,31 @@
         }
       });
 
+      function renderComparison(payload) {
+        const vulnerable = payload.vulnerable;
+        const defended = payload.defended;
+        byId("vulnerableAnswer").className = "result-answer";
+        byId("vulnerableAnswer").textContent = vulnerable.answer;
+        byId("defendedAnswer").className = "result-answer";
+        byId("defendedAnswer").textContent = defended.answer;
+        byId("vulnerableStatus").textContent =
+          vulnerable.outcome.replaceAll("_", " ");
+        byId("defendedStatus").textContent =
+          defended.outcome.replaceAll("_", " ");
+        byId("attackRank").textContent =
+          vulnerable.attack_document_rank ?? "검색 안 됨";
+        byId("attackScore").textContent =
+          vulnerable.attack_document_score == null
+            ? "—"
+            : Number(vulnerable.attack_document_score).toFixed(3);
+        byId("defenseBlocked").textContent =
+          payload.defense_blocked_attack ? "차단 성공" : "차단 미확인";
+        byId("experimentState").textContent = "COMPARISON DONE";
+        byId("experimentState").className = payload.defense_blocked_attack
+          ? "badge safe"
+          : "badge";
+      }
+
       byId("compareButton").addEventListener("click", async () => {
         const button = byId("compareButton");
         if (!attackDocumentId) {
@@ -882,33 +942,55 @@
             attack_target: byId("attackTarget").value.trim(),
             attack_document_ids: [attackDocumentId],
           });
-
-          const vulnerable = payload.vulnerable;
-          const defended = payload.defended;
-          byId("vulnerableAnswer").className = "result-answer";
-          byId("vulnerableAnswer").textContent = vulnerable.answer;
-          byId("defendedAnswer").className = "result-answer";
-          byId("defendedAnswer").textContent = defended.answer;
-          byId("vulnerableStatus").textContent =
-            vulnerable.outcome.replaceAll("_", " ");
-          byId("defendedStatus").textContent =
-            defended.outcome.replaceAll("_", " ");
-          byId("attackRank").textContent =
-            vulnerable.attack_document_rank ?? "검색 안 됨";
-          byId("attackScore").textContent =
-            vulnerable.attack_document_score == null
-              ? "—"
-              : Number(vulnerable.attack_document_score).toFixed(3);
-          byId("defenseBlocked").textContent =
-            payload.defense_blocked_attack ? "차단 성공" : "차단 미확인";
-          byId("experimentState").textContent = "COMPARISON DONE";
-          byId("experimentState").className = payload.defense_blocked_attack
-            ? "badge safe"
-            : "badge";
+          renderComparison(payload);
         } catch (error) {
           byId("vulnerableAnswer").className = "result-answer error";
           byId("vulnerableAnswer").textContent = error.message;
           byId("defendedAnswer").textContent = "비교 요청을 완료하지 못했습니다.";
+        } finally {
+          setBusy(button, false);
+        }
+      });
+
+      byId("autoAttackButton").addEventListener("click", async () => {
+        const button = byId("autoAttackButton");
+        const common = {
+          query: byId("attackQuestion").value.trim(),
+          expected_answer: byId("expectedAnswer").value.trim(),
+          attack_target: byId("attackTarget").value.trim(),
+        };
+        setBusy(button, true, "자동 실행 중");
+        byId("experimentState").textContent = "AUTOMATION RUNNING";
+        byId("experimentState").className = "badge danger";
+        byId("baselineAnswer").textContent = "공격 전 기준 답변 생성 중…";
+        byId("vulnerableAnswer").textContent = "Poison 문서 생성 및 평가 중…";
+        byId("defendedAnswer").textContent = "방어 모드 평가 대기 중…";
+
+        try {
+          const baseline = await request("/answer", {
+            query: common.query,
+            sources: ["local_db"],
+            limit: 3,
+            mode: "defended",
+          });
+          byId("baselineAnswer").className = "result-answer";
+          byId("baselineAnswer").textContent = baseline.answer;
+          byId("baselineStatus").textContent = "완료";
+
+          const result = await request("/experiments/keyword-stuffing", {
+            ...common,
+            repetitions: Number(byId("repetitions").value),
+            limit: 3,
+          });
+          attackDocumentId = result.document_id;
+          byId("poisonText").value = result.poison_text;
+          renderComparison(result.comparison);
+          byId("experimentState").textContent = "AUTOMATION DONE";
+        } catch (error) {
+          byId("experimentState").textContent = "AUTOMATION ERROR";
+          byId("experimentState").className = "badge danger";
+          byId("vulnerableAnswer").className = "result-answer error";
+          byId("vulnerableAnswer").textContent = error.message;
         } finally {
           setBusy(button, false);
         }

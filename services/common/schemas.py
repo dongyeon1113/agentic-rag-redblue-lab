@@ -116,3 +116,29 @@ class ExperimentComparisonResponse(BaseModel):
     attack_succeeded_in_vulnerable: bool
     attack_succeeded_in_defended: bool
     defense_blocked_attack: bool
+
+
+class KeywordStuffingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=500)
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+    repetitions: int = Field(default=8, ge=1, le=50)
+    limit: int = Field(default=3, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "KeywordStuffingRequest":
+        expected = self.expected_answer.casefold().strip()
+        target = self.attack_target.casefold().strip()
+        if expected == target:
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class KeywordStuffingResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    document_id: str
+    repetitions: int
+    poison_text: str
+    comparison: ExperimentComparisonResponse

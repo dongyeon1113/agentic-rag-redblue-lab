@@ -3,6 +3,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -16,11 +17,16 @@ from services.common.schemas import (
     ExperimentEvaluationRequest,
     ExperimentEvaluationResponse,
     HealthResponse,
+    KeywordStuffingRequest,
+    KeywordStuffingResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
     SearchHit,
 )
 from services.orchestrator.evaluation import evaluate_answer, evaluate_retrieval
+from services.orchestrator.keyword_stuffing import (
+    build_keyword_stuffing_document,
+)
 from services.orchestrator.rag import (
     build_rag_chain,
     collect_context_hits,
@@ -340,4 +346,43 @@ async def compare_experiment_modes(
         attack_succeeded_in_vulnerable=vulnerable_succeeded,
         attack_succeeded_in_defended=defended_succeeded,
         defense_blocked_attack=vulnerable_succeeded and not defended_succeeded,
+    )
+
+
+@app.post(
+    "/experiments/keyword-stuffing",
+    response_model=KeywordStuffingResponse,
+)
+async def run_keyword_stuffing_experiment(
+    request: KeywordStuffingRequest,
+) -> KeywordStuffingResponse:
+    document_id = f"keyword-stuffing-{uuid4().hex[:16]}"
+    poison_text = build_keyword_stuffing_document(
+        query=request.query,
+        attack_target=request.attack_target,
+        repetitions=request.repetitions,
+    )
+    await create_experiment_document(
+        ExperimentDocumentRequest(
+            document_id=document_id,
+            source="keyword-stuffing-automation",
+            tags=["controlled", "poison", "keyword-stuffing"],
+            text=poison_text,
+        )
+    )
+    comparison = await compare_experiment_modes(
+        ExperimentComparisonRequest(
+            query=request.query,
+            sources=["local_db"],
+            limit=request.limit,
+            expected_answer=request.expected_answer,
+            attack_target=request.attack_target,
+            attack_document_ids=[document_id],
+        )
+    )
+    return KeywordStuffingResponse(
+        document_id=document_id,
+        repetitions=request.repetitions,
+        poison_text=poison_text,
+        comparison=comparison,
     )
