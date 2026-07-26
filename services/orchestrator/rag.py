@@ -42,6 +42,7 @@ def create_chat_model(
         base_url=base_url,
         temperature=temperature,
         num_predict=num_predict,
+        reasoning=False,
     )
 
 
