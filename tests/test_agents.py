@@ -33,6 +33,9 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="compareButton"' in response.text
     assert 'id="resetButton"' in response.text
     assert 'id="attackStrategy"' in response.text
+    assert 'id="attackTypeButtons"' in response.text
+    assert 'data-strategy="conflict"' in response.text
+    assert 'aria-pressed="true"' in response.text
     assert 'id="topicPreset"' in response.text
     assert 'id="defenseStrategy"' in response.text
     assert 'id="poisonRatio"' in response.text
@@ -58,8 +61,6 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert "renderPipeline" in response.text
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
-    assert '"/experiments/poisoned-rag"' in response.text
-    assert '"/experiments/automated-attack"' in response.text
     assert '"/experiments/ratio-sweep"' in response.text
 
 
