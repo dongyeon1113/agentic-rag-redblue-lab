@@ -146,9 +146,16 @@ curl -X POST http://localhost:8000/experiments/keyword-stuffing \
     "expected_answer": "Paris",
     "attack_target": "Lyon",
     "repetitions": 8,
+    "include_prompt_injection": true,
     "limit": 3
   }'
 ```
+
+When `include_prompt_injection` is true, the generated untrusted passage
+combines retrieval keyword stuffing with an indirect instruction that asks the
+answer model to ignore conflicting passages. This is enabled only for the
+controlled red-team experiment; defended mode still removes the untrusted
+passage before generation.
 
 Remove all `untrusted` experiment documents while preserving the original
 trusted dataset:

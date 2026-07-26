@@ -364,6 +364,21 @@
         font-weight: 800;
       }
       .automation small { color: var(--muted); }
+      .attack-toggle {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 9px;
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .attack-toggle input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--danger);
+      }
 
       .step {
         display: grid;
@@ -659,8 +674,16 @@
                   <input id="repetitions" type="number" min="1" max="50" value="8" />
                 </div>
                 <div>
-                  <p>Keyword Stuffing 자동화</p>
-                  <small>기준 답변부터 삽입·비교까지 한 번에 실행</small>
+                  <p>Hybrid 공격 자동화</p>
+                  <small>검색 키워드 오염과 LLM 지시문을 함께 삽입</small>
+                  <label class="attack-toggle">
+                    <input
+                      id="includePromptInjection"
+                      type="checkbox"
+                      checked
+                    />
+                    다른 문서를 무시하라는 간접 프롬프트 포함
+                  </label>
                 </div>
                 <button class="button attack" id="autoAttackButton" type="button">
                   자동 실행
@@ -990,6 +1013,8 @@
           const result = await request("/experiments/keyword-stuffing", {
             ...common,
             repetitions: Number(byId("repetitions").value),
+            include_prompt_injection:
+              byId("includePromptInjection").checked,
             limit: 3,
           });
           attackDocumentId = result.document_id;

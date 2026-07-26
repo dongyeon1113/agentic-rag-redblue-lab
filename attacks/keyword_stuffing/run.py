@@ -12,6 +12,11 @@ def main() -> None:
     parser.add_argument("--expected-answer", required=True)
     parser.add_argument("--attack-target", required=True)
     parser.add_argument("--repetitions", type=int, default=8)
+    parser.add_argument(
+        "--keyword-only",
+        action="store_true",
+        help="Disable the indirect prompt-injection instruction.",
+    )
     args = parser.parse_args()
 
     payload = {
@@ -19,6 +24,7 @@ def main() -> None:
         "expected_answer": args.expected_answer,
         "attack_target": args.attack_target,
         "repetitions": args.repetitions,
+        "include_prompt_injection": not args.keyword_only,
         "limit": 3,
     }
     request = Request(

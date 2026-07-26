@@ -32,6 +32,7 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="injectButton"' in response.text
     assert 'id="compareButton"' in response.text
     assert 'id="resetButton"' in response.text
+    assert 'id="includePromptInjection"' in response.text
     assert '"/experiments/documents"' in response.text
     assert '"/experiments/compare"' in response.text
 

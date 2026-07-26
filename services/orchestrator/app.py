@@ -384,12 +384,22 @@ async def run_keyword_stuffing_experiment(
         query=request.query,
         attack_target=request.attack_target,
         repetitions=request.repetitions,
+        include_prompt_injection=request.include_prompt_injection,
     )
     await create_experiment_document(
         ExperimentDocumentRequest(
             document_id=document_id,
             source="keyword-stuffing-automation",
-            tags=["controlled", "poison", "keyword-stuffing"],
+            tags=[
+                "controlled",
+                "poison",
+                "keyword-stuffing",
+                *(
+                    ["indirect-prompt-injection"]
+                    if request.include_prompt_injection
+                    else []
+                ),
+            ],
             text=poison_text,
         )
     )
@@ -406,6 +416,7 @@ async def run_keyword_stuffing_experiment(
     return KeywordStuffingResponse(
         document_id=document_id,
         repetitions=request.repetitions,
+        include_prompt_injection=request.include_prompt_injection,
         poison_text=poison_text,
         comparison=comparison,
     )

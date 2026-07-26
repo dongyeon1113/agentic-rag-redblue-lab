@@ -131,6 +131,7 @@ class KeywordStuffingRequest(BaseModel):
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)
     repetitions: int = Field(default=8, ge=1, le=50)
+    include_prompt_injection: bool = True
     limit: int = Field(default=3, ge=1, le=20)
 
     @model_validator(mode="after")
@@ -146,5 +147,6 @@ class KeywordStuffingResponse(BaseModel):
     status: Literal["completed"] = "completed"
     document_id: str
     repetitions: int
+    include_prompt_injection: bool
     poison_text: str
     comparison: ExperimentComparisonResponse
