@@ -155,10 +155,13 @@ services:
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATA_FILE: /app/datasets/sample/drive_dummy.json
+      DATA_FILE: ${DRIVE_DATA_FILE:-/app/datasets/sample/drive_dummy.json}
       SEARCH_BACKEND: chroma
       CHROMA_COLLECTION: drive
       CHROMA_PERSIST_DIRECTORY: /app/data/chroma
+      DRIVE_SYNC_ENABLED: ${DRIVE_SYNC_ENABLED:-false}
+      GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID:-}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-service-account.json
     volumes:
       - drive-chroma:/app/data/chroma
     healthcheck: *healthcheck
