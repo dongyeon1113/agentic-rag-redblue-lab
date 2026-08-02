@@ -27,41 +27,19 @@ def test_orchestrator_serves_demo_gui() -> None:
     response = TestClient(orchestrator_app).get("/demo")
 
     assert response.status_code == 200
-    assert "Agentic RAG Security Lab" in response.text
+    assert "PoisonedRAG Reproduction Lab" in response.text
     assert 'id="questionForm"' in response.text
-    assert 'id="injectButton"' in response.text
-    assert 'id="compareButton"' in response.text
     assert 'id="resetButton"' in response.text
-    assert 'id="attackStrategy"' in response.text
-    assert 'id="attackTypeButtons"' in response.text
-    assert 'data-strategy="conflict"' in response.text
-    assert 'aria-pressed="true"' in response.text
-    assert 'id="topicPreset"' in response.text
-    assert 'id="defenseStrategy"' in response.text
-    assert 'id="poisonRatio"' in response.text
-    assert "Data Poisoning" in response.text
-    assert "Conflict Attack" in response.text
-    assert "Keyword Stuffing" in response.text
-    assert "Prompt Injection" in response.text
-    assert 'id="attackSuccessRate"' in response.text
-    assert 'id="answerAccuracy"' in response.text
-    assert 'id="poisonInTopK"' in response.text
+    assert 'id="runButton"' in response.text
+    assert 'id="benchmarkButton"' in response.text
+    assert 'id="count"' in response.text
+    assert 'id="topk"' in response.text
+    assert 'id="trials"' in response.text
     assert 'id="ragPipeline"' in response.text
-    assert 'id="pipelineQuestion"' in response.text
-    assert 'id="pipelineRetrieval"' in response.text
-    assert 'id="pipelinePoison"' in response.text
-    assert 'id="pipelineAnswer"' in response.text
-    assert 'id="sweepButton"' in response.text
-    assert 'id="ratioAnalysis"' in response.text
-    assert 'id="ratioChart"' in response.text
-    assert 'id="baselineDocuments"' in response.text
-    assert 'id="vulnerableDocuments"' in response.text
-    assert 'id="defendedDocuments"' in response.text
-    assert "renderRetrievalList" in response.text
-    assert "renderPipeline" in response.text
-    assert '"/experiments/documents"' in response.text
-    assert '"/experiments/compare"' in response.text
-    assert '"/experiments/ratio-sweep"' in response.text
+    assert 'id="generatedDocs"' in response.text
+    assert "P = Q + I" in response.text
+    assert '"/experiments/poisoned-rag"' in response.text
+    assert '"/experiments/poisoned-rag/benchmark"' in response.text
 
 
 def test_local_db_search_endpoint() -> None:

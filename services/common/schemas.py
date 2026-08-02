@@ -194,8 +194,12 @@ class PoisonedRAGRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)
-    poison_ratio: Literal[1, 2, 4, 6] = 2
-    limit: int = Field(default=5, ge=1, le=20)
+    poison_count: int = Field(default=5, ge=0, le=10)
+    top_k: int = Field(default=5, ge=1, le=20)
+    max_generation_trials: int = Field(default=10, ge=1, le=50)
+    passage_word_count: int = Field(default=30, ge=10, le=120)
+    generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+    cleanup_before_run: bool = True
 
     @model_validator(mode="after")
     def answers_must_differ(self) -> "PoisonedRAGRequest":
@@ -208,8 +212,13 @@ class PoisonedRAGRequest(BaseModel):
 
 class PoisonedRAGCandidate(BaseModel):
     document_id: str
-    text: str
-    relevance_score: float
+    instruction: str
+    poison_text: str
+    verification_answer: str
+    verified: bool
+    generation_queries: int
+    generation_seconds: float
+    word_count: int
 
 
 class AttackDashboardMetrics(BaseModel):
@@ -217,19 +226,82 @@ class AttackDashboardMetrics(BaseModel):
     accuracy: float
     poison_in_top_k: int
     top_k: int
-    poison_retrieval_rate: float
+    retrieval_precision: float
+    retrieval_recall: float
+    retrieval_f1: float
+    generation_queries: int
+    generation_seconds: float
 
 
 class PoisonedRAGResponse(BaseModel):
     status: Literal["completed"] = "completed"
     strategy: Literal["poisonedrag"] = "poisonedrag"
-    poison_ratio: Literal[1, 2, 4, 6]
-    generation_mode: Literal["llm", "hybrid", "fallback"]
-    generated_candidate_count: int
+    run_id: str
+    construction: Literal["black_box_q_plus_i"] = "black_box_q_plus_i"
+    requested_poison_count: int
+    verified_poison_count: int
+    injected_poison_count: int
+    top_k: int
     document_ids: list[str]
-    selected_candidates: list[PoisonedRAGCandidate]
+    generated_documents: list[PoisonedRAGCandidate]
     metrics: AttackDashboardMetrics
-    comparison: ExperimentComparisonResponse
+    baseline: ExperimentEvaluationResponse
+    attacked: ExperimentEvaluationResponse
+
+
+class PoisonedRAGScenario(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    query: str = Field(min_length=1, max_length=500)
+    expected_answer: str = Field(min_length=1, max_length=500)
+    attack_target: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def answers_must_differ(self) -> "PoisonedRAGScenario":
+        if self.expected_answer.casefold().strip() == self.attack_target.casefold().strip():
+            raise ValueError("expected_answer and attack_target must differ")
+        return self
+
+
+class PoisonedRAGBenchmarkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenarios: list[PoisonedRAGScenario] = Field(min_length=1, max_length=20)
+    poison_counts: list[int] = Field(default_factory=lambda: [0, 1, 3, 5], min_length=1, max_length=6)
+    repetitions: int = Field(default=1, ge=1, le=5)
+    top_k: int = Field(default=5, ge=1, le=20)
+    max_generation_trials: int = Field(default=10, ge=1, le=50)
+    passage_word_count: int = Field(default=30, ge=10, le=120)
+    generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "PoisonedRAGBenchmarkRequest":
+        if any(count < 0 or count > 10 for count in self.poison_counts):
+            raise ValueError("poison_counts values must be between 0 and 10")
+        self.poison_counts = sorted(set(self.poison_counts))
+        return self
+
+
+class PoisonedRAGBenchmarkPoint(BaseModel):
+    poison_count: int
+    trials: int
+    attack_success_rate: float
+    accuracy: float
+    retrieval_precision: float
+    retrieval_recall: float
+    retrieval_f1: float
+    average_poison_in_top_k: float
+    average_generation_queries: float
+    average_generation_seconds: float
+
+
+class PoisonedRAGBenchmarkResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    experiment_id: str
+    model: str
+    points: list[PoisonedRAGBenchmarkPoint]
+    runs: list[PoisonedRAGResponse]
+    json_url: str
+    csv_url: str
 
 
 class AutomatedAttackResponse(BaseModel):
