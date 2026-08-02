@@ -12,3 +12,24 @@ DRIVE_SYNC_ENABLED=true
 GOOGLE_DRIVE_FOLDER_ID=<folder ID>
 GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/google-service-account.json
 ```
+
+## Gmail OAuth
+
+Place the desktop OAuth client JSON at
+`secrets/google-gmail-oauth-client.json`, then authorize the dummy Gmail
+account once:
+
+```bash
+python3 scripts/authorize_gmail.py
+```
+
+This creates the ignored `secrets/google-gmail-token.json`. Enable Gmail sync
+in `.env`:
+
+```text
+GMAIL_SYNC_ENABLED=true
+GMAIL_DATA_FILE=/app/data/google_gmail_messages.json
+GMAIL_QUERY=in:anywhere
+GMAIL_MAX_MESSAGES=100
+GOOGLE_GMAIL_TOKEN_FILE=./secrets/google-gmail-token.json
+```

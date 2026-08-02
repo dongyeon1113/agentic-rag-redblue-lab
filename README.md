@@ -23,7 +23,7 @@ Orchestrator :8000 ---- Ollama / Qwen3:8b
 - `defended` mode removes untrusted passages before answer generation.
 
 Real Google credentials, private data, and complete research datasets are not
-included.
+included. Optional Drive and Gmail sync use local, Git-ignored credential files.
 
 ## Requirements
 
@@ -231,6 +231,26 @@ from the shared dummy Google account:
 The key file is mounted read-only and is ignored by Git. The Drive agent
 downloads Google Docs and plain-text files when the container starts, converts
 them to trusted search records, and indexes them in its Chroma collection.
+
+## Gmail mailbox sync
+
+The Gmail agent uses committed dummy JSON by default. To index the shared dummy
+Gmail account:
+
+1. Enable the Gmail API and configure an external OAuth test app.
+2. Create a desktop OAuth client and save its JSON as
+   `secrets/google-gmail-oauth-client.json`.
+3. Add the dummy Gmail address as an OAuth test user.
+4. Run `.venv/bin/python -m scripts.authorize_gmail` and approve the read-only
+   Gmail scope once.
+5. Set `GMAIL_SYNC_ENABLED=true` and the Gmail values from `.env.example`.
+6. Run `./scripts/bootstrap.sh`.
+
+The generated refresh token is stored in
+`secrets/google-gmail-token.json`, mounted read-only, and ignored by Git. The
+agent imports up to `GMAIL_MAX_MESSAGES` matching `GMAIL_QUERY` and indexes the
+subject, sender, recipients, date, and readable message body as trusted search
+records.
 
 ## Operations
 
