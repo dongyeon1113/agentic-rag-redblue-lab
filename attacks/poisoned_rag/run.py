@@ -11,12 +11,11 @@ def main() -> None:
     parser.add_argument("--query", required=True)
     parser.add_argument("--expected-answer", required=True)
     parser.add_argument("--attack-target", required=True)
-    parser.add_argument(
-        "--ratio",
-        type=int,
-        choices=[1, 2, 4, 6],
-        default=2,
-    )
+    parser.add_argument("--poison-count", type=int, default=5)
+    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--max-generation-trials", type=int, default=10)
+    parser.add_argument("--passage-word-count", type=int, default=30)
+    parser.add_argument("--generation-temperature", type=float, default=1.0)
     args = parser.parse_args()
 
     request = Request(
@@ -26,8 +25,12 @@ def main() -> None:
                 "query": args.query,
                 "expected_answer": args.expected_answer,
                 "attack_target": args.attack_target,
-                "poison_ratio": args.ratio,
-                "limit": 5,
+                "poison_count": args.poison_count,
+                "top_k": args.top_k,
+                "max_generation_trials": args.max_generation_trials,
+                "passage_word_count": args.passage_word_count,
+                "generation_temperature": args.generation_temperature,
+                "cleanup_before_run": True,
             }
         ).encode(),
         headers={"Content-Type": "application/json"},

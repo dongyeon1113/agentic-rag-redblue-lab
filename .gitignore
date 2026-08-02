@@ -218,6 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project-local secrets and generated data
+secrets/*.json
 .env
 .env.*
 !.env.example
