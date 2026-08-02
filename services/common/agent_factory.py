@@ -13,6 +13,7 @@ def create_search_agent(
     service_name: str,
     default_data_file: Path,
     default_search_backend: str = "lexical",
+    sync_data_file: bool = False,
 ) -> FastAPI:
     data_file = Path(os.getenv("DATA_FILE", str(default_data_file)))
     search_backend = os.getenv("SEARCH_BACKEND", default_search_backend).lower()
@@ -28,6 +29,7 @@ def create_search_agent(
                 service_name.replace("-agent", ""),
             ),
             persist_directory=persist_directory,
+            sync_data_file=sync_data_file,
         )
     else:
         raise ValueError(f"Unsupported SEARCH_BACKEND: {search_backend}")

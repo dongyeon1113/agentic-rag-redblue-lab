@@ -16,6 +16,7 @@ from services.common.schemas import (
     ExperimentComparisonResponse,
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
+    ExperimentDeleteResponse,
     ExperimentResetResponse,
     ExperimentEvaluationRequest,
     ExperimentEvaluationResponse,
@@ -47,9 +48,11 @@ from services.orchestrator.poisoned_rag import (
     rank_candidates,
 )
 from services.orchestrator.rag import (
+    apply_spotlighting_to_context,
     build_rag_chain,
     collect_context_hits,
     create_chat_model,
+    filter_prompt_injection_hits,
     format_context,
 )
 
@@ -69,11 +72,19 @@ AGENT_URLS = {
 
 app = FastAPI(title=SERVICE_NAME, version=VERSION)
 DEMO_FILE = Path(__file__).with_name("static") / "demo.html"
+SPOTLIGHTING_DEMO_FILE = (
+    Path(__file__).with_name("static") / "spotlighting.html"
+)
 
 
 @app.get("/demo", include_in_schema=False)
 async def demo() -> FileResponse:
     return FileResponse(DEMO_FILE)
+
+
+@app.get("/spotlighting-demo", include_in_schema=False)
+async def spotlighting_demo() -> FileResponse:
+    return FileResponse(SPOTLIGHTING_DEMO_FILE)
 
 
 @lru_cache(maxsize=1)
@@ -204,6 +215,34 @@ async def reset_experiment_documents() -> dict[str, Any]:
         ) from exc
 
 
+@app.delete(
+    "/experiments/documents/{document_id}",
+    response_model=ExperimentDeleteResponse,
+)
+async def delete_experiment_document(document_id: str) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client,
+                "DELETE",
+                f"{AGENT_URLS['local_db']}/documents/{document_id}",
+            )
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", exc.response.text)
+        except ValueError:
+            detail = exc.response.text
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=detail,
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Local DB agent is unavailable: {exc}",
+        ) from exc
+
+
 async def _query_agents(
     request: OrchestratorQueryRequest,
 ) -> dict[str, Any]:
@@ -245,53 +284,124 @@ async def query(request: OrchestratorQueryRequest) -> dict[str, Any]:
 
 
 @app.post("/answer")
-async def answer(request: OrchestratorAnswerRequest) -> dict[str, Any]:
-    return await _generate_answer(request)
+async def answer(
+    request: OrchestratorAnswerRequest,
+    delimiting: bool = False,
+    datamarking: bool = False,
+    encoding: bool = False,
+) -> dict[str, Any]:
+    methods = [
+        name
+        for name, enabled in (
+            ("delimiting", delimiting),
+            ("datamarking", datamarking),
+            ("encoding", encoding),
+        )
+        if enabled
+    ]
+    return await _generate_answer(request, spotlighting_methods=methods)
 
 
 async def _generate_answer(
     request: OrchestratorAnswerRequest,
+    *,
+    spotlighting_methods: list[str] | None = None,
 ) -> dict[str, Any]:
+    selected_spotlighting_methods = spotlighting_methods or []
+    context_capacity = request.context_capacity or RAG_CONTEXT_LIMIT
     retrieval_request = request
     if (
         request.mode == "defended"
+        or request.regex_filter
+        or not request.include_trusted_documents
         or request.allowed_untrusted_document_ids is not None
     ) and request.limit < 20:
         retrieval_request = request.model_copy(update={"limit": 20})
     results = await _query_agents(retrieval_request)
-    if request.allowed_untrusted_document_ids is not None:
-        allowed = set(request.allowed_untrusted_document_ids)
+    if (
+        request.allowed_untrusted_document_ids is not None
+        or not request.include_trusted_documents
+    ):
+        allowed = (
+            set(request.allowed_untrusted_document_ids)
+            if request.allowed_untrusted_document_ids is not None
+            else None
+        )
         for result in results.values():
             if result.get("status") != "ok":
                 continue
             result["hits"] = [
                 hit
                 for hit in result.get("hits", [])
-                if hit.get("trust") != "untrusted"
-                or hit.get("document_id") in allowed
+                if (
+                    hit.get("trust") == "untrusted"
+                    and (
+                        allowed is None
+                        or hit.get("document_id") in allowed
+                    )
+                )
+                or (
+                    hit.get("trust") != "untrusted"
+                    and request.include_trusted_documents
+                )
             ]
+    candidate_limit = 20 if request.regex_filter else context_capacity
     context_hits = collect_context_hits(
         results,
-        limit=RAG_CONTEXT_LIMIT,
+        limit=candidate_limit,
         trusted_only=request.mode == "defended",
     )
+    blocked_documents: list[dict[str, Any]] = []
+    if request.regex_filter:
+        context_hits, blocked_documents = filter_prompt_injection_hits(
+            context_hits
+        )
+        context_hits = context_hits[:context_capacity]
     if not context_hits:
         return {
             "service": SERVICE_NAME,
             "query": request.query,
             "model": OLLAMA_MODEL,
             "mode": request.mode,
+            "regex_filter": request.regex_filter,
+            "spotlighting_methods": selected_spotlighting_methods,
+            "context_capacity": context_capacity,
+            "include_trusted_documents": request.include_trusted_documents,
             "answer": "I cannot determine the answer from the retrieved context.",
             "documents": [],
+            "blocked_documents": blocked_documents,
+            "spotlighting_documents": [],
             "results": results,
         }
 
-    chain = build_rag_chain(_rag_model(), mode=request.mode)
+    include_trust_metadata = request.mode == "defended"
+    context = format_context(
+        context_hits,
+        include_trust=include_trust_metadata,
+    )
+    spotlighting_instruction = ""
+    spotlighting_documents: list[dict[str, Any]] = []
+    if selected_spotlighting_methods:
+        (
+            context,
+            spotlighting_instruction,
+            spotlighting_documents,
+        ) = apply_spotlighting_to_context(
+            context_hits,
+            selected_spotlighting_methods,
+            include_trust=include_trust_metadata,
+        )
+
+    chain = build_rag_chain(
+        _rag_model(),
+        mode=request.mode,
+        additional_system_instruction=spotlighting_instruction,
+    )
     try:
         generated_answer = await chain.ainvoke(
             {
                 "question": request.query,
-                "context": format_context(context_hits),
+                "context": context,
             }
         )
     except Exception as exc:
@@ -305,8 +415,14 @@ async def _generate_answer(
         "query": request.query,
         "model": OLLAMA_MODEL,
         "mode": request.mode,
+        "regex_filter": request.regex_filter,
+        "spotlighting_methods": selected_spotlighting_methods,
+        "context_capacity": context_capacity,
+        "include_trusted_documents": request.include_trusted_documents,
         "answer": generated_answer,
         "documents": [hit.model_dump() for hit in context_hits],
+        "blocked_documents": blocked_documents,
+        "spotlighting_documents": spotlighting_documents,
         "results": results,
     }
 

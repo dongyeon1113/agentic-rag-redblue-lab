@@ -79,6 +79,20 @@ curl -X POST http://localhost:8000/answer \
   -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
 ```
 
+Enable the regex prompt-injection filter while keeping the same vulnerable
+generation prompt:
+
+```bash
+curl -X POST http://localhost:8000/answer \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable","regex_filter":true}'
+```
+
+The response includes `blocked_documents` with the document ID, matched rule,
+and matching text for every passage removed before answer generation. Compare
+the same request with `regex_filter` set to `false` and `true` to isolate the
+effect of this filter from the defended prompt and trust filter.
+
 Add a controlled experiment document through the orchestrator:
 
 ```bash

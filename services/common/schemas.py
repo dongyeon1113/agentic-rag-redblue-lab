@@ -37,6 +37,9 @@ class OrchestratorQueryRequest(SearchRequest):
 
 class OrchestratorAnswerRequest(OrchestratorQueryRequest):
     mode: Literal["vulnerable", "defended"] = "vulnerable"
+    regex_filter: bool = False
+    context_capacity: int | None = Field(default=None, ge=1, le=20)
+    include_trusted_documents: bool = True
     allowed_untrusted_document_ids: list[str] | None = Field(
         default=None,
         max_length=20,

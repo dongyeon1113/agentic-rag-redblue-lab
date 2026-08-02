@@ -18,9 +18,11 @@ class ChromaDocumentStore:
         collection_name: str,
         persist_directory: Path | None = None,
         embedding: Embeddings | None = None,
+        sync_data_file: bool = False,
     ) -> None:
         self.data_file = data_file
         self.embedding = embedding or DeterministicHashEmbeddings()
+        self.sync_data_file = sync_data_file
         self.vector_store = Chroma(
             collection_name=collection_name,
             embedding_function=self.embedding,
@@ -32,6 +34,17 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
+        if self.sync_data_file:
+            existing_ids = [
+                str(item)
+                for item in self.vector_store.get(include=[]).get("ids", [])
+            ]
+            if existing_ids:
+                self.vector_store.delete(ids=existing_ids)
+
+        if not records:
+            return
+
         documents = [
             Document(
                 page_content=record["text"],

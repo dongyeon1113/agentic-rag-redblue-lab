@@ -15,6 +15,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app services ./services
 COPY --chown=app:app datasets ./datasets
+COPY --chown=app:app defenses ./defenses
 
 USER app
 

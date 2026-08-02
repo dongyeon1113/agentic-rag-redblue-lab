@@ -219,8 +219,29 @@ __marimo__/
 
 # Project-local secrets and generated data
 .env
+.env.*
+!.env.example
 datasets/raw/*
 !datasets/raw/.gitkeep
 data/
 models/
 .huggingface/
+
+# Local Chroma/runtime state
+chroma/
+.chroma/
+*.sqlite3
+*.sqlite3-journal
+
+# OAuth credentials and tokens
+credentials*.json
+client_secret*.json
+token*.json
+
+# Private keys
+*.pem
+*.key
+
+# Local IDE settings
+.vscode/
+.idea/
