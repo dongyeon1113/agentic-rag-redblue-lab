@@ -45,7 +45,7 @@ def test_orchestrator_serves_demo_gui() -> None:
 
 
 def test_orchestrator_serves_scenario_defense_gui() -> None:
-    response = TestClient(orchestrator_app).get("/spotlighting-demo")
+    response = TestClient(orchestrator_app).get("/defense-demo")
 
     assert response.status_code == 200
     assert 'id="scenario"' in response.text

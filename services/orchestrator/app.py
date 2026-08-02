@@ -68,8 +68,8 @@ DEMO_FILE = Path(__file__).with_name("static") / "demo.html"
 EXPERIMENT_RESULTS_DIR = Path(
     os.getenv("EXPERIMENT_RESULTS_DIR", "/tmp/poisonedrag-results")
 )
-SPOTLIGHTING_DEMO_FILE = (
-    Path(__file__).with_name("static") / "spotlighting.html"
+DEFENSE_DEMO_FILE = (
+    Path(__file__).with_name("static") / "defense-demo.html"
 )
 
 
@@ -78,9 +78,15 @@ async def demo() -> FileResponse:
     return FileResponse(DEMO_FILE)
 
 
+@app.get("/defense-demo", include_in_schema=False)
+async def defense_demo() -> FileResponse:
+    return FileResponse(DEFENSE_DEMO_FILE)
+
+
 @app.get("/spotlighting-demo", include_in_schema=False)
 async def spotlighting_demo() -> FileResponse:
-    return FileResponse(SPOTLIGHTING_DEMO_FILE)
+    """Backward-compatible alias for the defense demonstration UI."""
+    return FileResponse(DEFENSE_DEMO_FILE)
 
 
 @lru_cache(maxsize=1)
