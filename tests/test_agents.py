@@ -23,6 +23,17 @@ def test_all_services_report_health() -> None:
         assert response.json()["service"] == expected_name
 
 
+def test_google_agents_report_sample_mode_by_default() -> None:
+    for app, source in ((gmail_app, "gmail"), (drive_app, "drive")):
+        response = TestClient(app).get("/source-status")
+        assert response.status_code == 200
+        assert response.json() == {
+            "source": source,
+            "mode": "sample",
+            "connected": False,
+        }
+
+
 def test_orchestrator_serves_demo_gui() -> None:
     response = TestClient(orchestrator_app).get("/demo")
 
@@ -43,6 +54,7 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="sourceDrive"' in response.text
     assert '"/query"' in response.text
     assert '"/agents"' in response.text
+    assert "샘플 데이터 모드" in response.text
     assert "P = Q + I" in response.text
     assert '"/experiments/poisoned-rag"' in response.text
     assert '"/experiments/poisoned-rag/benchmark"' in response.text

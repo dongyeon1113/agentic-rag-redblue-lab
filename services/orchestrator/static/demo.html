@@ -201,10 +201,12 @@
       const r=await api("/agents");
       const labels={gmail:"Gmail",drive:"Google Drive"};
       $("agentStatuses").innerHTML=["gmail","drive"].map(source=>{
-        const ok=r.agents[source]?.status!=="unavailable";
-        return `<span class="${ok?"ok":"fail"}">${labels[source]} ${ok?"연결됨":"연결 안 됨"}</span>`;
+        const agent=r.agents[source]; const running=agent?.status!=="unavailable";
+        const live=agent?.data_source?.mode==="live";
+        const label=!running?"에이전트 꺼짐":live?"실제 계정 연결됨":"샘플 데이터 모드";
+        return `<span class="${live?"ok":running?"":"fail"}">${labels[source]} · ${label}</span>`;
       }).join("");
-      $("sourceStatus").textContent="에이전트 연결 상태";
+      $("sourceStatus").textContent="데이터 연결 상태";
     }catch(err){$("sourceStatus").textContent=`상태 확인 실패: ${err.message}`}
   }
   function renderSourceResults(results){

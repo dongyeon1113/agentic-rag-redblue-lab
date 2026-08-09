@@ -123,12 +123,23 @@ async def agents() -> dict[str, Any]:
             return_exceptions=True,
         )
 
+        source_responses = await asyncio.gather(
+            *[
+                _request_json(client, "GET", f"{AGENT_URLS[source]}/source-status")
+                for source in ("gmail", "drive")
+            ],
+            return_exceptions=True,
+        )
+
     status: dict[str, Any] = {}
     for source, response in zip(AGENT_URLS, responses, strict=True):
         if isinstance(response, Exception):
             status[source] = {"status": "unavailable", "error": str(response)}
         else:
             status[source] = response
+    for source, response in zip(("gmail", "drive"), source_responses, strict=True):
+        if not isinstance(response, Exception) and status[source].get("status") != "unavailable":
+            status[source]["data_source"] = response
     return {"service": SERVICE_NAME, "agents": status}
 
 
