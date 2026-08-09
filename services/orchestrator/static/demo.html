@@ -61,6 +61,16 @@
     .legend{font-size:11px;display:grid;gap:10px}.dot{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:7px}
     .downloads{display:flex;gap:8px;margin-top:18px}.downloads a{color:var(--text);text-decoration:none;background:#20304d;padding:9px 12px;border-radius:9px;font-size:11px;font-weight:800}
     .empty{color:var(--muted);font-size:12px;padding:18px 0}
+    .source-browser{display:grid;gap:14px}.source-toolbar{display:grid;grid-template-columns:1fr auto;gap:10px}
+    .source-picker{display:flex;gap:10px;flex-wrap:wrap}.source-option{display:flex;align-items:center;gap:7px;
+      padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#0b1220;font-size:12px;font-weight:800}
+    .source-option input{width:auto;margin:0}.source-results{display:grid;gap:10px}
+    .source-result{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:14px}
+    .source-result header{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .source-result strong{font-size:12px}.source-result pre{white-space:pre-wrap;margin:10px 0 0;
+      font:12px/1.55 ui-monospace,SFMono-Regular,monospace;color:#bfcdea}
+    .source-badge{padding:3px 8px;border-radius:99px;background:#253a5d;color:#cfe0ff;font-size:9px;font-weight:900}
+    .source-statuses{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
     @media(max-width:1050px){.layout{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.metrics{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:650px){.layout{padding:12px}.answers,.benchmark{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
   </style>
@@ -101,6 +111,19 @@
       </form>
     </aside>
     <div class="workspace">
+      <section class="card section source-browser" id="sourceBrowser">
+        <div class="section-title"><h3>Gmail · Google Drive 문서 가져오기</h3><span class="status" id="sourceStatus">연결 상태 확인 중…</span></div>
+        <div class="source-picker">
+          <label class="source-option"><input id="sourceGmail" type="checkbox" checked> Gmail</label>
+          <label class="source-option"><input id="sourceDrive" type="checkbox" checked> Google Drive</label>
+        </div>
+        <form class="source-toolbar" id="sourceSearchForm">
+          <input id="sourceQuery" aria-label="문서 검색어" placeholder="메일 또는 Drive 문서에서 찾을 내용" required>
+          <button class="secondary" id="sourceSearchButton" type="submit">문서 가져오기</button>
+        </form>
+        <div class="source-statuses" id="agentStatuses"></div>
+        <div class="source-results" id="sourceResults"><div class="empty">검색어를 입력하면 연결된 소스의 문서가 표시됩니다.</div></div>
+      </section>
       <section class="card pipeline" id="ragPipeline">
         <div class="stage"><small>01 · Q</small><strong id="pQuestion">질문 대기</strong><span>공격자가 선택한 target question</span></div><div class="arrow">→</div>
         <div class="stage"><small>02 · I 검증</small><strong id="pGenerate">생성 대기</strong><span>R이 출력될 때까지 최대 L회 재생성</span></div><div class="arrow">→</div>
@@ -173,6 +196,36 @@
       <pre><b>I (generation condition)</b>\n${escapeHtml(d.instruction)}\n\n<b>Verification answer</b>\n${escapeHtml(d.verification_answer)}\n\n<b>P = Q + I (final poison)</b>\n${escapeHtml(d.poison_text)}</pre></details>`).join("") : '<div class="empty">N=0 baseline 실험입니다.</div>';
   }
   function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+  async function loadAgentStatuses(){
+    try{
+      const r=await api("/agents");
+      const labels={gmail:"Gmail",drive:"Google Drive"};
+      $("agentStatuses").innerHTML=["gmail","drive"].map(source=>{
+        const ok=r.agents[source]?.status!=="unavailable";
+        return `<span class="${ok?"ok":"fail"}">${labels[source]} ${ok?"연결됨":"연결 안 됨"}</span>`;
+      }).join("");
+      $("sourceStatus").textContent="에이전트 연결 상태";
+    }catch(err){$("sourceStatus").textContent=`상태 확인 실패: ${err.message}`}
+  }
+  function renderSourceResults(results){
+    const labels={gmail:"Gmail",drive:"Google Drive"}; let cards=[]; let errors=[];
+    Object.entries(results).forEach(([source,result])=>{
+      if(result.status!=="ok"){errors.push(`${labels[source]}: ${result.error||"검색 실패"}`);return}
+      (result.hits||[]).forEach(hit=>cards.push(`<article class="source-result"><header><strong>${escapeHtml(hit.document_id)}</strong><span class="source-badge">${labels[source]}</span></header><pre>${escapeHtml(hit.text)}</pre></article>`));
+    });
+    $("sourceResults").innerHTML=(errors.length?`<div class="fail">${errors.map(escapeHtml).join(" · ")}</div>`:"")+
+      (cards.length?cards.join(""):'<div class="empty">일치하는 문서가 없습니다.</div>');
+    $("sourceStatus").textContent=`${cards.length}개 문서 가져옴`;
+  }
+  $("sourceSearchForm").addEventListener("submit",async e=>{
+    e.preventDefault(); const sources=[];
+    if($("sourceGmail").checked)sources.push("gmail"); if($("sourceDrive").checked)sources.push("drive");
+    if(!sources.length){$("sourceStatus").textContent="Gmail 또는 Google Drive를 선택하세요.";return}
+    $("sourceSearchButton").disabled=true; $("sourceStatus").textContent="문서 검색 중…";
+    try{const r=await api("/query",{method:"POST",body:JSON.stringify({query:$("sourceQuery").value,sources,limit:10})});renderSourceResults(r.results)}
+    catch(err){$("sourceStatus").textContent=`검색 실패: ${err.message}`}finally{$("sourceSearchButton").disabled=false}
+  });
+  loadAgentStatuses();
   $("questionForm").addEventListener("submit",async e=>{
     e.preventDefault();busy(true,"I 생성·검증 중…");
     try{renderRun(await api("/experiments/poisoned-rag",{method:"POST",body:JSON.stringify(payload(+$("count").value))}))}

@@ -37,6 +37,12 @@ def test_orchestrator_serves_demo_gui() -> None:
     assert 'id="trials"' in response.text
     assert 'id="ragPipeline"' in response.text
     assert 'id="generatedDocs"' in response.text
+    assert 'id="sourceBrowser"' in response.text
+    assert 'id="sourceSearchForm"' in response.text
+    assert 'id="sourceGmail"' in response.text
+    assert 'id="sourceDrive"' in response.text
+    assert '"/query"' in response.text
+    assert '"/agents"' in response.text
     assert "P = Q + I" in response.text
     assert '"/experiments/poisoned-rag"' in response.text
     assert '"/experiments/poisoned-rag/benchmark"' in response.text
