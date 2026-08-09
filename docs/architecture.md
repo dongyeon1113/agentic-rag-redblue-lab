@@ -23,6 +23,17 @@ the highest-ranked passages and invokes `qwen3:8b` through LangChain
 `ChatOllama`. Vulnerable mode includes trusted and untrusted passages. Defended
 mode removes untrusted passages and uses an instruction-isolation prompt.
 
+## Agent long-term memory
+
+The orchestrator keeps a per-session JSONL memory of past turns at
+`AGENT_MEMORY_FILE`, persisted on its own Docker volume. Recall is lexical and
+scoped to `session_id`; recalled turns enter the prompt as ordinary passages
+with `source=agent-memory`. A turn is stored as `trusted` only when every
+passage used for it was trusted, so a poisoned turn produces `untrusted`
+memory that defended mode drops like any other untrusted hit. This makes
+memory persistence of an attack measurable with the existing evaluation code.
+Experiment endpoints default to `use_memory=false` so trials stay independent.
+
 ## Trust boundary
 
 All retrieved content is data, not executable instructions. Future connectors

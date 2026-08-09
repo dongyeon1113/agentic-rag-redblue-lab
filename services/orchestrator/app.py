@@ -29,6 +29,8 @@ from services.common.schemas import (
     ExperimentEvaluationRequest,
     ExperimentEvaluationResponse,
     HealthResponse,
+    MemoryListResponse,
+    MemoryResetResponse,
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
     AttackDashboardMetrics,
@@ -54,6 +56,7 @@ from services.orchestrator.evaluation import (
     normalize_text,
     phrase_present,
 )
+from services.orchestrator.memory import ConversationMemory, memory_to_hit
 from services.orchestrator.poisoned_rag import (
     GeneratedPoison,
     generate_poison_set,
@@ -91,6 +94,15 @@ EXPERIMENT_SCENARIOS_FILE = Path(
         str(Path(__file__).resolve().parents[2] / "datasets/experiments/nq_target_queries.json"),
     )
 )
+AGENT_MEMORY_FILE = Path(
+    os.getenv("AGENT_MEMORY_FILE", "/tmp/agent-memory/memory.jsonl")
+)
+MEMORY_RECALL_LIMIT = int(os.getenv("MEMORY_RECALL_LIMIT", "3"))
+
+
+@lru_cache(maxsize=1)
+def _memory() -> ConversationMemory:
+    return ConversationMemory(AGENT_MEMORY_FILE)
 
 
 @app.get("/demo", include_in_schema=False)
@@ -345,7 +357,8 @@ async def _generate_answer(
                 if hit.get("trust") != "untrusted"
                 or hit.get("document_id") in allowed
             ]
-    context_hits = collect_context_hits(
+    memory_hits = _recall_memory(request)
+    context_hits = memory_hits + collect_context_hits(
         results,
         limit=min(request.limit, RAG_CONTEXT_LIMIT),
         trusted_only=request.mode == "defended",
@@ -359,6 +372,7 @@ async def _generate_answer(
             "answer": "I cannot determine the answer from the retrieved context.",
             "documents": [],
             "results": results,
+            "memory": [],
         }
 
     chain = build_rag_chain(_rag_model(), mode=request.mode)
@@ -375,6 +389,18 @@ async def _generate_answer(
             detail=f"Ollama model {OLLAMA_MODEL} is unavailable: {exc}",
         ) from exc
 
+    if request.use_memory:
+        _memory().append(
+            session_id=request.session_id,
+            query=request.query,
+            answer=generated_answer,
+            trust=(
+                "trusted"
+                if all(hit.trust == "trusted" for hit in context_hits)
+                else "untrusted"
+            ),
+        )
+
     return {
         "service": SERVICE_NAME,
         "query": request.query,
@@ -383,7 +409,50 @@ async def _generate_answer(
         "answer": generated_answer,
         "documents": [hit.model_dump() for hit in context_hits],
         "results": results,
+        "memory": [hit.model_dump() for hit in memory_hits],
     }
+
+
+def _recall_memory(request: OrchestratorAnswerRequest) -> list[SearchHit]:
+    """Recall past turns of the same session as extra context passages.
+
+    Memory written while poisoned passages were in context is `untrusted`, so
+    defended mode drops it exactly like an untrusted retrieval hit.
+    """
+    if not request.use_memory:
+        return []
+    records = _memory().recall(
+        request.query,
+        session_id=request.session_id,
+        limit=MEMORY_RECALL_LIMIT,
+        trusted_only=request.mode == "defended",
+    )
+    return [memory_to_hit(record) for record in records]
+
+
+@app.get("/memory", response_model=MemoryListResponse)
+async def list_memory(
+    session_id: str | None = None,
+    limit: int = 20,
+) -> MemoryListResponse:
+    records = _memory().list(session_id=session_id, limit=limit)
+    return MemoryListResponse(
+        service=SERVICE_NAME,
+        session_id=session_id,
+        count=len(records),
+        records=records,
+    )
+
+
+@app.delete("/memory", response_model=MemoryResetResponse)
+async def reset_memory(session_id: str | None = None) -> MemoryResetResponse:
+    memory = _memory()
+    deleted_count = memory.clear(session_id=session_id)
+    return MemoryResetResponse(
+        session_id=session_id,
+        deleted_count=deleted_count,
+        remaining_count=len(memory.records),
+    )
 
 
 @app.post(

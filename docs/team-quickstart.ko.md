@@ -72,6 +72,21 @@ Snap Docker 서버에서 이미지를 다시 빌드할 때는 항상 다음 명�
 ./scripts/bootstrap.sh
 ```
 
+## 에이전트 장기 메모리
+
+`POST /answer`는 `session_id`별로 이전 질문과 답변을 파일(JSONL)에 저장하고,
+다음 질의에서 관련도가 높은 turn을 검색 결과와 함께 컨텍스트에 넣는다.
+
+```bash
+curl 'http://localhost:8000/memory?session_id=demo-session'
+curl -X DELETE 'http://localhost:8000/memory?session_id=demo-session'
+```
+
+컨텍스트가 전부 `trusted`였던 turn만 `trusted` 메모리로 남는다. 오염된
+문서로 만들어진 답변은 `untrusted` 메모리가 되어 `defended` 모드에서
+제외되므로, 공격이 대화 turn을 넘어 지속되는지 그대로 측정할 수 있다.
+실험용 엔드포인트는 기본값이 `use_memory: false`라 반복 실험에 영향이 없다.
+
 ## 개발 순서
 
 1. 작업 전에 `main`을 최신 상태로 만든다.

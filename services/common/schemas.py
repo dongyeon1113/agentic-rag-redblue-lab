@@ -41,6 +41,37 @@ class OrchestratorAnswerRequest(OrchestratorQueryRequest):
         default=None,
         max_length=20,
     )
+    session_id: str = Field(
+        default="default",
+        min_length=1,
+        max_length=120,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    use_memory: bool = True
+
+
+class MemoryRecord(BaseModel):
+    memory_id: str
+    session_id: str
+    query: str
+    answer: str
+    trust: Literal["trusted", "untrusted"]
+    created_at: str
+    score: float = 0.0
+
+
+class MemoryListResponse(BaseModel):
+    service: str
+    session_id: str | None
+    count: int
+    records: list[MemoryRecord]
+
+
+class MemoryResetResponse(BaseModel):
+    status: Literal["reset"] = "reset"
+    session_id: str | None
+    deleted_count: int
+    remaining_count: int
 
 
 class ExperimentDocumentRequest(BaseModel):
@@ -79,6 +110,9 @@ class ExperimentDeleteResponse(BaseModel):
 
 
 class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
+    # Experiments stay memory-free unless a run explicitly opts in, so
+    # repeated trials remain independent.
+    use_memory: bool = False
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)
     attack_document_ids: list[str] = Field(min_length=1, max_length=20)
