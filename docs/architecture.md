@@ -23,6 +23,16 @@ the highest-ranked passages and invokes `qwen3:8b` through LangChain
 `ChatOllama`. Vulnerable mode includes trusted and untrusted passages. Defended
 mode removes untrusted passages and uses an instruction-isolation prompt.
 
+## Retrieval-stage defense
+
+`retrieval_defense: "ragpart"` switches the search agents to a second Chroma
+collection holding `C(N, k)` mean-pooled fragment vectors per document. Each
+combination is queried independently and the resulting top-p lists are merged
+by majority vote (arXiv:2512.24268). It runs before generation and uses no
+trust metadata, so it composes with either `mode`. See
+`docs/ragpart-ragmask.ko.md` for the algorithm, measurements, and its current
+limitation under the offline hash embedding.
+
 ## Trust boundary
 
 All retrieved content is data, not executable instructions. Future connectors

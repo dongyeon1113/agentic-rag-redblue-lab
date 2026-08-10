@@ -88,13 +88,40 @@ AdvRAGgen이다. 이 중 Query-as-Poison은 문서에 질의문을 그대로 붙
 
    즉 **오염 문서의 평균 점수는 떨어지지 않는다.** 조각별 L2 정규화가 짧은
    조각을 오히려 증폭시키기 때문이다(질의 토큰이 37단어 전체에 정규화되는
-   대신 7단어 조각에 정규화된다). 이 랩에서 RAGPart가 작동하는 실제 근거는
-   점수 억제가 아니라 **조합 커버리지**다. 오염 문서는 질의 조각을 제외한
-   4/10 조합에서 아예 검색되지 않으므로 다수결에서 밀린다.
+   대신 7단어 조각에 정규화된다). 이 랩에서 RAGPart가 작동하는 유일한 근거는
+   점수 억제가 아니라 **조합 커버리지**다.
 
-   따라서 논문 수치를 그대로 재현하는 것은 아니고, 방어 효과는 다수결 집계에
-   전적으로 의존한다. 실제 dense 리트리버(Ollama 임베딩, e5) 교체가 후속
-   과제이며, 교체 후 이 표를 다시 측정해 비교해야 한다.
+   ### 결론: 현재 임베딩에서는 방어가 되지 않는다 (실측)
+
+   위 표의 poison은 instruction이 무의미한 filler였다. **실제 PoisonedRAG
+   오염문**은 `I`가 질의를 중심으로 쓰이므로 질의 토큰("capital", "France")을
+   자연스럽게 반복한다. 그러면 질의 토큰이 여러 조각에 퍼져 커버리지 이점이
+   사라진다.
+
+   | 문서 | 질의 토큰이 있는 조각 | 커버리지 |
+   | --- | --- | --- |
+   | golden | [1, 4] | 9/10 |
+   | poison (filler `I`) | [0] | 6/10 |
+   | poison (**실제** `I`) | [0, 1] | **9/10** |
+
+   실제 오염문에서는 golden과 커버리지가 9/10로 동일하다. 검색 순위를 8회
+   반복 측정한 결과:
+
+   | 공격 | 방어 없음 golden 순위 | RAGPart golden 순위 |
+   | --- | --- | --- |
+   | 실제 `Q‖I` 오염문 3개 | 4위 (1회 3위) | 4위 (고정) |
+
+   **즉 현재의 `DeterministicHashEmbeddings`에서 RAGPart는 실제 공격에 대해
+   측정 가능한 방어 효과가 없다.** filler 오염문(커버리지 6/10)은 방어가
+   동작하는 케이스지만, 그 공격은 애초에 방어 없이도 실패한다(golden이 1위).
+   즉 "공격이 성공하면서 RAGPart가 막는" 구간이 이 임베딩에는 존재하지 않는다.
+
+   이는 구현 버그가 아니라 임베딩의 문제다. 조합별 top-p 검색과 다수결은
+   논문대로 동작하며(`tests/test_ragpart.py`가 커버리지 6/10 vs 9/10을 검증),
+   커버리지 차이가 생기는 입력에서는 다수결이 정상 반응한다.
+
+   → **4단계(리트리버 교체)가 선택 과제가 아니라 선행 조건이다.** dense
+   리트리버로 바꾼 뒤 이 표를 다시 측정해야 논문 재현 여부를 말할 수 있다.
 2. **문서 길이**: 현재 픽스처 문서는 평균 10단어다. `N=5`로 자르면 조각이
    2단어가 되어 유틸리티(SR) 손실이 논문보다 크게 나올 수 있다. 반면 오염
    문서는 `P = Q || I`로 약 37단어라 분할이 자연스럽게 동작한다. 이 비대칭
@@ -109,50 +136,32 @@ AdvRAGgen이다. 이 중 Query-as-Poison은 문서에 질의문을 그대로 붙
 ### 1단계 — RAGPart
 
 - [x] `services/common/ragpart.py`: 분할, 조합 임베딩 평균, 다수결 집계
-- [x] `tests/test_ragpart.py`: 코어 알고리즘 단위 테스트 7개
-- [ ] `ChromaDocumentStore`: 원본 컬렉션 옆에 `-ragpart` 보조 컬렉션 구축
-- [ ] 검색 에이전트 `/search`에 `defense` 파라미터 추가 (`none` | `ragpart`)
-- [ ] 오케스트레이터 `/query`, `/answer`, `/experiments/*`에
-      `retrieval_defense` 전달
-- [ ] 논문 기준 검색 단계 지표(ASR/SR)를 메트릭에 추가
+- [x] `ChromaDocumentStore`: 보조 컬렉션 `{collection}-ragpart` 구축·동기화
+- [x] 검색 에이전트 `/search`에 `defense` 파라미터 (`none` | `ragpart`)
+- [x] 오케스트레이터 `retrieval_defense` 전달 및 실험 엔드포인트 연동
+- [x] 논문 기준 검색 단계 지표(ASR/SR)
+- [x] 테스트 17개 (`tests/test_ragpart.py`, `tests/test_ragpart_retrieval.py`)
 
-#### 이어서 작업할 때 (인수인계)
+구현 메모:
+- 보조 컬렉션에는 id `{doc_id}#c{j}`, 메타데이터 `combo_index`, 그리고 미리
+  계산한 조합 벡터만 넣는다. 본문은 원본 컬렉션에서 읽어오므로 `C(N,k)`배
+  중복 저장이 없다.
+- 검색은 `combo_index`별로 `n_results=limit` 쿼리를 `C(N,k)`번 돌린 뒤
+  `majority_vote`로 합친다. **조합 평균 점수로 랭킹하면 방어가 무효화되므로**
+  반드시 조합별 top-p를 따로 뽑아야 한다.
+- 실험 문서 주입·삭제 시 보조 컬렉션도 함께 갱신된다.
+- `N`, `k`는 `RAGPART_FRAGMENTS`, `RAGPART_COMBINATION_SIZE` 환경변수.
 
-브랜치: `feature/jhpark-ragpart` (main에서 분기)
+### 2단계 — 논문 정렬 평가 (다음 작업)
 
-코어 알고리즘 모듈과 계획 문서까지 끝났고, **검색 파이프라인 연결이 남았다.**
-`services/common/ragpart.py`의 공개 함수 세 개만 쓰면 된다.
+**선행 조건: 4단계 리트리버 교체.** 위 실측대로 현재 임베딩에서는 RAGPart의
+방어 효과가 0이라, 지금 스윕을 돌려도 "차이 없음"만 나온다.
 
-1. **`ChromaDocumentStore` 연결** (`services/common/chroma_store.py`)
-   - `RagPartConfig`를 받아 보조 컬렉션 `{collection_name}-ragpart`를 만든다.
-   - 색인: 문서마다 `partition_text` → 조각별 `embedding.embed_documents`
-     → `combination_vectors` → `C(N,k)`개 벡터를 id `{doc_id}#c{j}`,
-     메타데이터 `combo_index=j`로 저장한다.
-   - 미리 계산한 벡터를 넣어야 하므로 langchain 래퍼가 아니라
-     `vector_store._collection.add(embeddings=..., ids=..., metadatas=...)`를
-     쓴다. `count()`가 이미 `_collection`을 쓰고 있으니 같은 방식이다.
-   - 검색: 질의 벡터로 `combo_index=j`마다 `_collection.query(...,
-     where={"combo_index": j}, n_results=limit)`를 `C(N,k)`번 호출해
-     `(document_id, score)` 목록을 만든 뒤 `majority_vote(sets, limit)`.
-     거리→점수 변환은 기존 `search()`와 동일하게 `1/(1+distance)`.
-   - `add_document` / `delete_untrusted_document(s)`도 보조 컬렉션에 같이
-     반영해야 한다. 실험 문서가 런타임에 주입·삭제되기 때문이다.
-2. **에이전트**: `SearchRequest`에 `defense: Literal["none","ragpart"]`
-   추가 → `create_search_agent`의 `/search`가 분기.
-3. **오케스트레이터**: `OrchestratorQueryRequest`에 `retrieval_defense`를
-   추가해 `_query_agents`의 payload로 전달.
-4. **지표**: 논문 기준 검색 단계 ASR(top-k에 오염 문서 1개 이상) / SR(top-k에
-   정답 문서 1개 이상)을 `AttackDashboardMetrics`에 추가.
-
-주의: 오염 문서 방어 효과는 **다수결 집계에서만** 나온다(위 한계 1 참고).
-따라서 `majority_vote`를 우회하고 조합 평균 점수로 랭킹하면 방어가 되지
-않는다. 반드시 조합별 top-p를 따로 뽑아 집계해야 한다.
-
-### 2단계 — 논문 정렬 평가
-
-- `/experiments/poisoned-rag/benchmark`를 방어별로 sweep해서 `없음 / trust
-  필터 / RAGPart` 의 ASR·SR 하락폭 비교표 생성
+- `/experiments/poisoned-rag/benchmark`의 `retrieval_defenses: ["none",
+  "ragpart"]`로 방어별 ASR·SR 비교표 생성 (이미 동작함)
 - `N`, `k` 하이퍼파라미터 스윕(논문 부록 Table 9/10 대응)
+- 코퍼스 확대: 현재 정상 문서가 3개뿐이라 top-k=5면 거의 전부 검색된다.
+  논문식 ASR(top-k에 오염 문서 1개 이상)이 내려갈 여지가 구조적으로 없다.
 
 ### 3단계 — RAGMask
 
@@ -160,7 +169,10 @@ AdvRAGgen이다. 이 중 Query-as-Poison은 문서에 질의문을 그대로 붙
 - `m`, `δ` 하이퍼파라미터 스윕
 - RAGPart와의 유틸리티/비용 트레이드오프 비교
 
-### 4단계 — 리트리버 교체 (선택)
+### 4단계 — 리트리버 교체 (**선행 조건**)
 
-- `DeterministicHashEmbeddings`를 실제 dense 리트리버로 교체해 논문의 귀납적
-  편향 가정을 실제로 만족시킨 상태에서 재측정
+- `DeterministicHashEmbeddings`를 실제 dense 리트리버(Ollama 임베딩,
+  contriever, e5 등)로 교체한다. 논문의 귀납적 편향("조각 임베딩이 원본 문서
+  의미를 보존")은 학습된 dense 리트리버에서만 성립한다.
+- 교체 후 위의 커버리지 표와 순위 표를 다시 측정해 RAGPart의 방어 효과가
+  실제로 나타나는지 확인한다. 2·3단계 평가는 그 다음이다.

@@ -20,10 +20,16 @@ from itertools import combinations
 
 @dataclass(frozen=True)
 class RagPartConfig:
-    """Paper defaults are ``N=5``, ``k=3`` (Appendix Table 9/10)."""
+    """Paper defaults are ``N=5``, ``k=3`` (Appendix Table 9/10).
+
+    ``enabled`` gates building the side index. It is off by default because
+    indexing costs ``fragments`` embedding calls per document, which is
+    prohibitive on the full NQ corpus.
+    """
 
     fragments: int = 5
     combination_size: int = 3
+    enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.fragments < 1:

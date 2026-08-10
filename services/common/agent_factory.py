@@ -1,10 +1,11 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 
 from services.common.chroma_store import ChromaDocumentStore
 from services.common.embeddings import create_embeddings
+from services.common.ragpart import RagPartConfig
 from services.common.schemas import HealthResponse, SearchRequest, SearchResponse
 from services.common.search import JsonDocumentStore
 
@@ -30,6 +31,14 @@ def create_search_agent(
             ),
             persist_directory=persist_directory,
             embedding=create_embeddings(),
+            ragpart=RagPartConfig(
+                fragments=int(os.getenv("RAGPART_FRAGMENTS", "5")),
+                combination_size=int(
+                    os.getenv("RAGPART_COMBINATION_SIZE", "3")
+                ),
+                enabled=os.getenv("RAGPART_ENABLED", "false").lower()
+                in {"1", "true", "yes"},
+            ),
         )
     else:
         raise ValueError(f"Unsupported SEARCH_BACKEND: {search_backend}")
@@ -46,10 +55,19 @@ def create_search_agent(
 
     @app.post("/search", response_model=SearchResponse)
     async def search(request: SearchRequest) -> SearchResponse:
+        if request.defense == "ragpart":
+            if not isinstance(store, ChromaDocumentStore):
+                raise HTTPException(
+                    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                    detail="RAGPart requires the Chroma backend.",
+                )
+            hits = store.search_ragpart(request.query, request.limit)
+        else:
+            hits = store.search(request.query, request.limit)
         return SearchResponse(
             service=service_name,
             query=request.query,
-            hits=store.search(request.query, request.limit),
+            hits=hits,
         )
 
     return app
