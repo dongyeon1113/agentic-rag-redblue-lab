@@ -136,8 +136,9 @@ services:
       OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
       CHROMA_INDEX_BATCH_SIZE: 100
-      CHROMA_COLLECTION: local-db
+      CHROMA_COLLECTION: local-db-nomic-v1
       CHROMA_PERSIST_DIRECTORY: /app/data/chroma
+      CHROMA_SYNC_TRUSTED_CORPUS: "true"
     volumes:
       - local-db-chroma:/app/data/chroma
     depends_on:

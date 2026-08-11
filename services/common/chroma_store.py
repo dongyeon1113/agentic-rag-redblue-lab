@@ -33,19 +33,23 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
-        desired_ids = {str(record["id"]) for record in records}
-        existing = self.vector_store.get(include=["metadatas"])
-        stale_trusted_ids = [
-            str(document_id)
-            for document_id, metadata in zip(
-                existing.get("ids", []),
-                existing.get("metadatas", []),
-            )
-            if (metadata or {}).get("trust") == "trusted"
-            and str(document_id) not in desired_ids
-        ]
-        if stale_trusted_ids:
-            self.vector_store.delete(ids=stale_trusted_ids)
+        sync_trusted = os.getenv("CHROMA_SYNC_TRUSTED_CORPUS", "false").lower() in {
+            "1", "true", "yes"
+        }
+        if sync_trusted:
+            desired_ids = {str(record["id"]) for record in records}
+            existing = self.vector_store.get(include=["metadatas"])
+            stale_trusted_ids = [
+                str(document_id)
+                for document_id, metadata in zip(
+                    existing.get("ids", []),
+                    existing.get("metadatas", []),
+                )
+                if (metadata or {}).get("trust") == "trusted"
+                and str(document_id) not in desired_ids
+            ]
+            if stale_trusted_ids:
+                self.vector_store.delete(ids=stale_trusted_ids)
 
         documents = [
             Document(

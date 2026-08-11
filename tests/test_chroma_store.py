@@ -65,7 +65,11 @@ def test_chroma_store_deletes_only_untrusted_documents(tmp_path: Path) -> None:
     assert store.contains("nq-sample-001")
 
 
-def test_chroma_store_syncs_trusted_corpus_but_preserves_untrusted(tmp_path: Path) -> None:
+def test_chroma_store_syncs_trusted_corpus_but_preserves_untrusted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("CHROMA_SYNC_TRUSTED_CORPUS", "true")
     persist_directory = tmp_path / "chroma"
     store = ChromaDocumentStore(
         PROJECT_ROOT / "datasets/sample/nq_sample.json",
