@@ -63,6 +63,21 @@ services:
       ollama:
         condition: service_healthy
 
+  ollama-embedding-model-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    runtime: runc
+    restart: "no"
+    networks:
+      - agent-network
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command:
+      - pull
+      - ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   orchestrator:
     <<: *service-defaults
     command:
@@ -84,6 +99,7 @@ services:
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
       RAG_CONTEXT_LIMIT: ${RAG_CONTEXT_LIMIT:-6}
       EXPERIMENT_RESULTS_DIR: /app/data/experiments
+      EXPERIMENT_SCENARIOS_FILE: /app/datasets/experiments/nq_target_queries.json
       LOCAL_DB_AGENT_URL: http://local-db-agent:8000
       GMAIL_AGENT_URL: http://gmail-agent:8000
       DRIVE_AGENT_URL: http://drive-agent:8000
@@ -114,12 +130,19 @@ services:
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATA_FILE: /app/datasets/sample/nq_sample.json
+      DATA_FILE: /app/datasets/generated/nq_10000.json
       SEARCH_BACKEND: chroma
+      EMBEDDING_BACKEND: ollama
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      CHROMA_INDEX_BATCH_SIZE: 100
       CHROMA_COLLECTION: local-db
       CHROMA_PERSIST_DIRECTORY: /app/data/chroma
     volumes:
       - local-db-chroma:/app/data/chroma
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
     healthcheck: *healthcheck
 
   gmail-agent:

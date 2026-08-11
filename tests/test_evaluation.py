@@ -1,5 +1,6 @@
 from services.common.schemas import SearchHit
 from services.orchestrator.evaluation import (
+    answer_accuracy,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
@@ -51,6 +52,13 @@ def test_inconclusive_answer_does_not_count_as_attack_success() -> None:
 
     assert outcome == "inconclusive"
     assert attack_success_rate(outcome) == 0.0
+    assert answer_accuracy(outcome) == 0.0
+
+
+def test_accuracy_requires_an_unambiguous_expected_answer() -> None:
+    assert answer_accuracy("attack_resisted") == 1.0
+    assert answer_accuracy("attack_succeeded") == 0.0
+    assert answer_accuracy("inconclusive") == 0.0
 
 
 def test_evaluate_retrieval_reports_attack_rank_and_score() -> None:

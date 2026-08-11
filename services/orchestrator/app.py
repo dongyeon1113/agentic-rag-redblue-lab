@@ -2,8 +2,10 @@ import asyncio
 import csv
 import json
 import os
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -27,11 +29,15 @@ from services.common.schemas import (
     PoisonedRAGBenchmarkRequest,
     PoisonedRAGBenchmarkResponse,
     PoisonedRAGCandidate,
+    PoisonedRAGPipelineStatus,
     PoisonedRAGRequest,
     PoisonedRAGResponse,
+    PoisonedRAGRunFailure,
+    PoisonedRAGRunMetadata,
     SearchHit,
 )
 from services.orchestrator.evaluation import (
+    answer_accuracy,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
@@ -65,11 +71,32 @@ DEMO_FILE = Path(__file__).with_name("static") / "demo.html"
 EXPERIMENT_RESULTS_DIR = Path(
     os.getenv("EXPERIMENT_RESULTS_DIR", "/tmp/poisonedrag-results")
 )
+EXPERIMENT_SCENARIOS_FILE = Path(
+    os.getenv(
+        "EXPERIMENT_SCENARIOS_FILE",
+        str(Path(__file__).resolve().parents[2] / "datasets/experiments/nq_target_queries.json"),
+    )
+)
 
 
 @app.get("/demo", include_in_schema=False)
 async def demo() -> FileResponse:
     return FileResponse(DEMO_FILE)
+
+
+@app.get("/experiments/scenarios")
+async def experiment_scenarios() -> dict[str, Any]:
+    try:
+        scenarios = json.loads(EXPERIMENT_SCENARIOS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail="Experiment scenarios are unavailable") from exc
+    required = {"id", "query", "expected_answer", "attack_target"}
+    if not isinstance(scenarios, list) or any(
+        not isinstance(item, dict) or not required.issubset(item)
+        for item in scenarios
+    ):
+        raise HTTPException(status_code=503, detail="Experiment scenario data is invalid")
+    return {"dataset": "beir-nq", "count": len(scenarios), "scenarios": scenarios}
 
 
 @lru_cache(maxsize=1)
@@ -434,6 +461,8 @@ async def compare_experiment_modes(
 async def run_poisoned_rag_experiment(
     request: PoisonedRAGRequest,
 ) -> PoisonedRAGResponse:
+    run_started = perf_counter()
+    started_at = datetime.now(timezone.utc)
     if request.cleanup_before_run:
         await reset_experiment_documents()
 
@@ -531,7 +560,7 @@ async def run_poisoned_rag_experiment(
     )
     metrics = AttackDashboardMetrics(
         attack_success_rate=attack_success_rate(attacked.outcome),
-        accuracy=1.0 if attacked.expected_answer_present else 0.0,
+        accuracy=answer_accuracy(attacked.outcome),
         poison_in_top_k=poison_in_top_k,
         top_k=retrieved_count,
         retrieval_precision=round(precision, 4),
@@ -541,15 +570,46 @@ async def run_poisoned_rag_experiment(
         generation_seconds=round(
             sum(item.generation_seconds for item in generated), 3
         ),
+        total_seconds=round(perf_counter() - run_started, 3),
     )
+    verified_count = sum(item.verified for item in generated)
+    generation_status = (
+        "skipped"
+        if request.poison_count == 0
+        else "completed"
+        if verified_count == request.poison_count
+        else "partial"
+    )
+    injection_status = (
+        "skipped"
+        if request.poison_count == 0
+        else "completed"
+        if len(document_ids) == request.poison_count
+        else "partial"
+    )
+    completed_at = datetime.now(timezone.utc)
     return PoisonedRAGResponse(
         run_id=run_id,
         requested_poison_count=request.poison_count,
-        verified_poison_count=sum(item.verified for item in generated),
+        verified_poison_count=verified_count,
         injected_poison_count=len(document_ids),
         top_k=request.top_k,
         document_ids=document_ids,
         generated_documents=generated_documents,
+        pipeline=PoisonedRAGPipelineStatus(
+            generation=generation_status,
+            injection=injection_status,
+        ),
+        metadata=PoisonedRAGRunMetadata(
+            started_at=started_at.isoformat(),
+            completed_at=completed_at.isoformat(),
+            service_version=VERSION,
+            model=OLLAMA_MODEL,
+            generation_temperature=request.generation_temperature,
+            max_generation_trials=request.max_generation_trials,
+            passage_word_count=request.passage_word_count,
+            cleanup_before_run=request.cleanup_before_run,
+        ),
         metrics=metrics,
         baseline=baseline,
         attacked=attacked,
@@ -588,11 +648,13 @@ async def run_poisoned_rag_benchmark(
 ) -> PoisonedRAGBenchmarkResponse:
     experiment_id = f"poisonedrag-{uuid4().hex[:12]}"
     runs: list[PoisonedRAGResponse] = []
+    failures: list[PoisonedRAGRunFailure] = []
     for scenario in request.scenarios:
         for poison_count in request.poison_counts:
-            for _ in range(request.repetitions):
-                runs.append(
-                    await run_poisoned_rag_experiment(
+            for repetition in range(1, request.repetitions + 1):
+                attempt_started = perf_counter()
+                try:
+                    run = await run_poisoned_rag_experiment(
                         PoisonedRAGRequest(
                             query=scenario.query,
                             expected_answer=scenario.expected_answer,
@@ -605,17 +667,43 @@ async def run_poisoned_rag_benchmark(
                             cleanup_before_run=True,
                         )
                     )
-                )
+                except Exception as exc:
+                    detail = (
+                        exc.detail
+                        if isinstance(exc, HTTPException)
+                        else "Unexpected internal error; inspect restricted server logs."
+                    )
+                    detail_text = str(detail)[:1000]
+                    stage = "generation" if "generation failed" in detail_text.casefold() else "unknown"
+                    failures.append(
+                        PoisonedRAGRunFailure(
+                            scenario_name=scenario.name,
+                            poison_count=poison_count,
+                            repetition=repetition,
+                            stage=stage,
+                            error_type=type(exc).__name__,
+                            detail=detail_text,
+                            elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                        )
+                    )
+                    continue
+                run.scenario_name = scenario.name
+                runs.append(run)
 
     points: list[PoisonedRAGBenchmarkPoint] = []
     for poison_count in request.poison_counts:
         selected = [
             run for run in runs if run.requested_poison_count == poison_count
         ]
+        selected_failures = [
+            failure for failure in failures if failure.poison_count == poison_count
+        ]
         points.append(
             PoisonedRAGBenchmarkPoint(
                 poison_count=poison_count,
-                trials=len(selected),
+                trials=len(selected) + len(selected_failures),
+                successful_trials=len(selected),
+                failed_trials=len(selected_failures),
                 attack_success_rate=_mean([run.metrics.attack_success_rate for run in selected]),
                 accuracy=_mean([run.metrics.accuracy for run in selected]),
                 retrieval_precision=_mean([run.metrics.retrieval_precision for run in selected]),
@@ -624,6 +712,7 @@ async def run_poisoned_rag_benchmark(
                 average_poison_in_top_k=_mean([float(run.metrics.poison_in_top_k) for run in selected]),
                 average_generation_queries=_mean([float(run.metrics.generation_queries) for run in selected]),
                 average_generation_seconds=_mean([run.metrics.generation_seconds for run in selected]),
+                average_total_seconds=_mean([run.metrics.total_seconds for run in selected]),
             )
         )
 
@@ -632,6 +721,7 @@ async def run_poisoned_rag_benchmark(
         model=OLLAMA_MODEL,
         points=points,
         runs=runs,
+        failures=failures,
         json_url=f"/experiments/results/{experiment_id}.json",
         csv_url=f"/experiments/results/{experiment_id}.csv",
     )

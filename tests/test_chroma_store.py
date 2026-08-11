@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from services.common.chroma_store import ChromaDocumentStore
@@ -62,3 +63,37 @@ def test_chroma_store_deletes_only_untrusted_documents(tmp_path: Path) -> None:
     assert store.count() == 3
     assert not store.contains("poison-test-1")
     assert store.contains("nq-sample-001")
+
+
+def test_chroma_store_syncs_trusted_corpus_but_preserves_untrusted(tmp_path: Path) -> None:
+    persist_directory = tmp_path / "chroma"
+    store = ChromaDocumentStore(
+        PROJECT_ROOT / "datasets/sample/nq_sample.json",
+        collection_name="test-sync",
+        persist_directory=persist_directory,
+    )
+    store.add_document(
+        document_id="poison-preserved",
+        source="red-team-test",
+        trust="untrusted",
+        tags=["poison"],
+        text="Controlled poison document.",
+    )
+    replacement = tmp_path / "replacement.json"
+    replacement.write_text(json.dumps([{
+        "id": "replacement-trusted",
+        "source": "replacement",
+        "trust": "trusted",
+        "text": "Replacement trusted corpus document.",
+    }]), encoding="utf-8")
+
+    synced = ChromaDocumentStore(
+        replacement,
+        collection_name="test-sync",
+        persist_directory=persist_directory,
+    )
+
+    assert synced.count() == 2
+    assert synced.contains("replacement-trusted")
+    assert synced.contains("poison-preserved")
+    assert not synced.contains("nq-sample-001")

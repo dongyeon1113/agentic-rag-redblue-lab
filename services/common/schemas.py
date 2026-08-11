@@ -231,12 +231,33 @@ class AttackDashboardMetrics(BaseModel):
     retrieval_f1: float
     generation_queries: int
     generation_seconds: float
+    total_seconds: float = 0.0
+
+
+class PoisonedRAGPipelineStatus(BaseModel):
+    baseline: Literal["completed"] = "completed"
+    generation: Literal["completed", "partial", "skipped"]
+    injection: Literal["completed", "partial", "skipped"]
+    retrieval: Literal["completed"] = "completed"
+    answer_evaluation: Literal["completed"] = "completed"
+
+
+class PoisonedRAGRunMetadata(BaseModel):
+    started_at: str
+    completed_at: str
+    service_version: str
+    model: str
+    generation_temperature: float
+    max_generation_trials: int
+    passage_word_count: int
+    cleanup_before_run: bool
 
 
 class PoisonedRAGResponse(BaseModel):
     status: Literal["completed"] = "completed"
     strategy: Literal["poisonedrag"] = "poisonedrag"
     run_id: str
+    scenario_name: str | None = None
     construction: Literal["black_box_q_plus_i"] = "black_box_q_plus_i"
     requested_poison_count: int
     verified_poison_count: int
@@ -244,6 +265,8 @@ class PoisonedRAGResponse(BaseModel):
     top_k: int
     document_ids: list[str]
     generated_documents: list[PoisonedRAGCandidate]
+    pipeline: PoisonedRAGPipelineStatus
+    metadata: PoisonedRAGRunMetadata
     metrics: AttackDashboardMetrics
     baseline: ExperimentEvaluationResponse
     attacked: ExperimentEvaluationResponse
@@ -284,6 +307,8 @@ class PoisonedRAGBenchmarkRequest(BaseModel):
 class PoisonedRAGBenchmarkPoint(BaseModel):
     poison_count: int
     trials: int
+    successful_trials: int = 0
+    failed_trials: int = 0
     attack_success_rate: float
     accuracy: float
     retrieval_precision: float
@@ -292,6 +317,17 @@ class PoisonedRAGBenchmarkPoint(BaseModel):
     average_poison_in_top_k: float
     average_generation_queries: float
     average_generation_seconds: float
+    average_total_seconds: float = 0.0
+
+
+class PoisonedRAGRunFailure(BaseModel):
+    scenario_name: str
+    poison_count: int
+    repetition: int
+    stage: Literal["setup", "baseline", "generation", "injection", "retrieval_or_answer", "unknown"]
+    error_type: str
+    detail: str
+    elapsed_seconds: float
 
 
 class PoisonedRAGBenchmarkResponse(BaseModel):
@@ -300,6 +336,7 @@ class PoisonedRAGBenchmarkResponse(BaseModel):
     model: str
     points: list[PoisonedRAGBenchmarkPoint]
     runs: list[PoisonedRAGResponse]
+    failures: list[PoisonedRAGRunFailure] = Field(default_factory=list)
     json_url: str
     csv_url: str
 

@@ -19,6 +19,8 @@ Orchestrator :8000 ---- Ollama / Qwen3:8b
 - The Local DB agent indexes a small BEIR NQ-style fixture.
 - Gmail and Drive agents index non-sensitive dummy fixtures.
 - Each search agent has an independent persistent Chroma volume.
+- The 10,000-document Local DB uses Ollama `nomic-embed-text`; tests keep the
+  deterministic offline embedding for speed and reproducibility.
 - `vulnerable` mode uses trusted and untrusted passages.
 - `defended` mode removes untrusted passages before answer generation.
 
@@ -36,6 +38,16 @@ for remote access; do not expose this unauthenticated lab directly to the
 internet.
 
 ## First run
+
+The committed experiment corpus contains 10,000 trusted BEIR NQ passages,
+including all qrels passages for the 100 committed RAGDefender target queries.
+Its provenance and hashes are recorded in
+`datasets/generated/nq_10000.manifest.json`. To rebuild it from Git-ignored
+upstream files, install the development requirements and run:
+
+```bash
+.venv/bin/python scripts/build_nq_corpus.py
+```
 
 ```bash
 ./scripts/bootstrap.sh

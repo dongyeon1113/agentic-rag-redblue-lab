@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -32,6 +33,20 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
+        desired_ids = {str(record["id"]) for record in records}
+        existing = self.vector_store.get(include=["metadatas"])
+        stale_trusted_ids = [
+            str(document_id)
+            for document_id, metadata in zip(
+                existing.get("ids", []),
+                existing.get("metadatas", []),
+            )
+            if (metadata or {}).get("trust") == "trusted"
+            and str(document_id) not in desired_ids
+        ]
+        if stale_trusted_ids:
+            self.vector_store.delete(ids=stale_trusted_ids)
+
         documents = [
             Document(
                 page_content=record["text"],
@@ -44,10 +59,13 @@ class ChromaDocumentStore:
             )
             for record in records
         ]
-        self.vector_store.add_documents(
-            documents=documents,
-            ids=[record["id"] for record in records],
-        )
+        batch_size = max(1, int(os.getenv("CHROMA_INDEX_BATCH_SIZE", "1000")))
+        for start in range(0, len(records), batch_size):
+            end = start + batch_size
+            self.vector_store.add_documents(
+                documents=documents[start:end],
+                ids=[record["id"] for record in records[start:end]],
+            )
 
     def search(self, query: str, limit: int) -> list[SearchHit]:
         results = self.vector_store.similarity_search_with_score(query, k=limit)
