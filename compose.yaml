@@ -1,4 +1,5 @@
 x-service-defaults: &service-defaults
+  init: true
   build:
     context: .
   runtime: runc
@@ -22,6 +23,7 @@ x-healthcheck: &healthcheck
 
 services:
   ollama:
+    init: true
     image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
     restart: unless-stopped
     networks:
@@ -83,6 +85,11 @@ services:
       OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0}
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
       RAG_CONTEXT_LIMIT: ${RAG_CONTEXT_LIMIT:-6}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /app/data/huggingface
+      PROMPT_GUARD_MODEL: ${PROMPT_GUARD_MODEL:-meta-llama/Prompt-Guard-86M}
+      PROMPT_GUARD_DEVICE: ${PROMPT_GUARD_DEVICE:-cpu}
+      PROMPT_GUARD_THRESHOLD: ${PROMPT_GUARD_THRESHOLD:-0.90}
       EXPERIMENT_RESULTS_DIR: /app/data/experiments
       LOCAL_DB_AGENT_URL: http://local-db-agent:8000
       GMAIL_AGENT_URL: http://gmail-agent:8000
@@ -98,6 +105,7 @@ services:
         condition: service_healthy
     volumes:
       - experiment-results:/app/data/experiments
+      - huggingface-cache:/app/data/huggingface
     healthcheck: *healthcheck
 
   local-db-agent:
@@ -183,3 +191,4 @@ volumes:
   drive-chroma:
   ollama-models:
   experiment-results:
+  huggingface-cache:

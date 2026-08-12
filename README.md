@@ -50,7 +50,7 @@ block container stop and restart operations.
 Check readiness:
 
 ```bash
-docker compose ps
+docker compose -p shkwon-test ps
 python3 scripts/smoke_test.py
 ```
 
@@ -78,6 +78,8 @@ curl -X POST http://localhost:8000/answer \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
 ```
+
+Enable Meta Prompt Guard with `"prompt_guard": true`; setup and model authentication are documented in `defenses/README.md`.
 
 Enable the regex prompt-injection filter while keeping the same vulnerable
 generation prompt:
@@ -252,13 +254,13 @@ records.
 ## Operations
 
 ```bash
-docker compose ps
-docker compose logs -f orchestrator
-docker compose restart
-docker compose down
+docker compose -p shkwon-test ps
+docker compose -p shkwon-test logs -f orchestrator
+docker compose -p shkwon-test restart
+docker compose -p shkwon-test down
 ```
 
-Do not run `docker compose down -v` unless persistent Chroma data and downloaded
+Do not run `docker compose -p shkwon-test down -v` unless persistent Chroma data and downloaded
 Ollama models should be deleted.
 
 On a Snap Docker host, use `./scripts/bootstrap.sh` for builds and updates. The

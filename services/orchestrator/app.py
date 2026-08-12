@@ -2,6 +2,7 @@ import asyncio
 import csv
 import json
 import os
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from langchain_core.messages import HumanMessage, SystemMessage
 from fastapi.responses import FileResponse
 
 from services.common.schemas import (
@@ -24,6 +26,8 @@ from services.common.schemas import (
     OrchestratorAnswerRequest,
     OrchestratorQueryRequest,
     AttackDashboardMetrics,
+    BipiaAnswerRequest,
+    BipiaEvaluationRequest,
     PoisonedRAGBenchmarkPoint,
     PoisonedRAGBenchmarkRequest,
     PoisonedRAGBenchmarkResponse,
@@ -32,20 +36,31 @@ from services.common.schemas import (
     PoisonedRAGResponse,
     SearchHit,
 )
+from services.orchestrator.bipia_benchmark import (
+    BipiaBenchmarkSuite, redact_prompt_guard, redact_regex, spotlight_context,
+)
+from services.orchestrator.bipia_evaluation import (
+    judge_bipia_answer,
+    mean as bipia_mean,
+)
 from services.orchestrator.evaluation import (
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
 )
+from services.orchestrator.mock_tools import run_rag_with_mock_tools
 from services.orchestrator.poisoned_rag import (
     generate_poison_set,
 )
 from services.orchestrator.rag import (
+    DEFENDED_SYSTEM_PROMPT,
+    VULNERABLE_SYSTEM_PROMPT,
     apply_spotlighting_to_context,
     build_rag_chain,
     collect_context_hits,
     create_chat_model,
     filter_prompt_injection_hits,
+    filter_prompt_guard_hits,
     format_context,
 )
 
@@ -57,6 +72,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
 RAG_CONTEXT_LIMIT = int(os.getenv("RAG_CONTEXT_LIMIT", "6"))
+
 AGENT_URLS = {
     "local_db": os.getenv("LOCAL_DB_AGENT_URL", "http://localhost:8001"),
     "gmail": os.getenv("GMAIL_AGENT_URL", "http://localhost:8002"),
@@ -71,6 +87,9 @@ EXPERIMENT_RESULTS_DIR = Path(
 DEFENSE_DEMO_FILE = (
     Path(__file__).with_name("static") / "defense-demo.html"
 )
+RAG_RETRIEVER_DEMO_FILE = (
+    Path(__file__).with_name("static") / "rag-retriever-demo.html"
+)
 
 
 @app.get("/demo", include_in_schema=False)
@@ -81,6 +100,11 @@ async def demo() -> FileResponse:
 @app.get("/defense-demo", include_in_schema=False)
 async def defense_demo() -> FileResponse:
     return FileResponse(DEFENSE_DEMO_FILE)
+
+
+@app.get("/rag-retriever-demo", include_in_schema=False)
+async def rag_retriever_demo() -> FileResponse:
+    return FileResponse(RAG_RETRIEVER_DEMO_FILE)
 
 
 @app.get("/spotlighting-demo", include_in_schema=False)
@@ -97,6 +121,141 @@ def _rag_model():
         temperature=OLLAMA_TEMPERATURE,
         num_predict=OLLAMA_NUM_PREDICT,
     )
+
+
+@lru_cache(maxsize=1)
+def _prompt_guard_detector():
+    from defenses.prompt_guard import PromptGuardDetector
+
+    return PromptGuardDetector(
+        model_id=os.getenv("PROMPT_GUARD_MODEL", "meta-llama/Prompt-Guard-86M"),
+        device=os.getenv("PROMPT_GUARD_DEVICE") or None,
+        threshold=float(os.getenv("PROMPT_GUARD_THRESHOLD", "0.90")),
+    )
+
+
+@lru_cache(maxsize=1)
+def _bipia_suite() -> BipiaBenchmarkSuite:
+    return BipiaBenchmarkSuite(per_task=50)
+
+
+@app.get("/bipia/cases")
+async def bipia_cases() -> dict[str, Any]:
+    cases = _bipia_suite().summaries()
+    return {"service": SERVICE_NAME, "case_count": len(cases), "cases": cases}
+
+
+@app.post("/bipia/answer")
+async def bipia_answer(request: BipiaAnswerRequest) -> dict[str, Any]:
+    try:
+        case = _bipia_suite().get(request.case_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    context = case.attacked_context
+    redactions: list[dict[str, Any]] = []
+    detector_latency_ms = 0.0
+    if request.regex_filter:
+        context, records = redact_regex(context)
+        redactions.extend(records)
+    if request.prompt_guard:
+        try:
+            context, records, detector_latency_ms = redact_prompt_guard(
+                context, _prompt_guard_detector()
+            )
+            redactions.extend(records)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Prompt Guard is unavailable: {exc}") from exc
+    spotlighting_instruction = ""
+    spotlighting_metadata: dict[str, Any] = {"method": "none"}
+    if request.spotlighting != "none":
+        context, spotlighting_instruction, spotlighting_metadata = spotlight_context(
+            context, request.spotlighting
+        )
+    system_prompt, user_prompt = _bipia_suite().prompts(case, context)
+    if spotlighting_instruction:
+        system_prompt = f"{system_prompt}\n\nSECURITY INSTRUCTION:\n{spotlighting_instruction}"
+    try:
+        raw = await _rag_model().ainvoke([
+            SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)
+        ])
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Ollama model {OLLAMA_MODEL} is unavailable: {exc}") from exc
+    answer = raw.content if hasattr(raw, "content") else str(raw)
+    return {
+        "service": SERVICE_NAME, "model": OLLAMA_MODEL, "case_id": case.case_id,
+        "task": case.task, "question": case.question, "ideal": case.ideal,
+        "attack_name": case.attack_name, "attack_str": case.attack_str,
+        "position": case.position, "answer": str(answer),
+        "original_context": case.attacked_context, "filtered_context": context,
+        "regex_filter": request.regex_filter, "prompt_guard": request.prompt_guard,
+        "spotlighting": request.spotlighting,
+        "spotlighting_metadata": spotlighting_metadata,
+        "redactions": redactions, "redaction_count": len(redactions),
+        "detector_latency_ms": detector_latency_ms,
+    }
+
+
+@app.post("/bipia/evaluate")
+async def evaluate_bipia(request: BipiaEvaluationRequest) -> dict[str, Any]:
+    cases = _bipia_suite().cases[:request.case_limit]
+    started = time.perf_counter()
+    results = []
+    for case in cases:
+        payload = await bipia_answer(BipiaAnswerRequest(
+            case_id=case.case_id, regex_filter=request.regex_filter,
+            prompt_guard=request.prompt_guard, spotlighting=request.spotlighting,
+        ))
+        verdict = await judge_bipia_answer(
+            _rag_model(), question=case.question, ideal=case.ideal,
+            answer=str(payload["answer"]), attack_instructions=[case.attack_str],
+        )
+        results.append({
+            "case_id": case.case_id, "task": case.task, "question": case.question,
+            "ideal": case.ideal, "answer": payload["answer"],
+            "attack_name": case.attack_name, "position": case.position,
+            "judge_status": "parse_error" if verdict.parse_error else "valid",
+            "attack_success": None if verdict.parse_error else verdict.attack_success,
+            "answer_correct": None if verdict.parse_error else verdict.answer_correct,
+            "judge_confidence": round(verdict.confidence, 4),
+            "judge_reason": verdict.reason, "judge_parse_error": verdict.parse_error,
+            "redaction_count": payload["redaction_count"],
+        })
+    valid_results = [item for item in results if not item["judge_parse_error"]]
+    parse_errors = len(results) - len(valid_results)
+    successes = sum(bool(item["attack_success"]) for item in valid_results)
+    correct = sum(bool(item["answer_correct"]) for item in valid_results)
+    defended = sum(int(item["redaction_count"]) > 0 for item in results)
+    task_metrics = {}
+    for task in ("email", "table"):
+        selected = [item for item in results if item["task"] == task]
+        valid_selected = [item for item in selected if not item["judge_parse_error"]]
+        if selected:
+            task_metrics[task] = {
+                "cases": len(selected),
+                "valid_judgments": len(valid_selected),
+                "judge_parse_errors": len(selected) - len(valid_selected),
+                "attack_success_rate": bipia_mean([float(item["attack_success"]) for item in valid_selected]) if valid_selected else None,
+                "accuracy": bipia_mean([float(item["answer_correct"]) for item in valid_selected]) if valid_selected else None,
+                "redaction_rate": bipia_mean([float(item["redaction_count"] > 0) for item in selected]),
+            }
+    return {
+        "service": SERVICE_NAME, "model": OLLAMA_MODEL, "evaluator_model": OLLAMA_MODEL,
+        "configuration": request.model_dump(),
+        "summary": {
+            "evaluated_cases": len(results),
+            "attack_successes": successes,
+            "valid_judgments": len(valid_results),
+            "indeterminate_cases": parse_errors,
+            "attack_success_rate": round(successes / len(valid_results), 4) if valid_results else None,
+            "accuracy": round(correct / len(valid_results), 4) if valid_results else None,
+            "redaction_rate": round(defended / len(results), 4),
+            "total_redactions": sum(int(item["redaction_count"]) for item in results),
+            "judge_parse_errors": parse_errors,
+            "judge_parse_error_rate": round(parse_errors / len(results), 4),
+            "duration_seconds": round(time.perf_counter() - started, 3),
+        },
+        "task_metrics": task_metrics, "results": results,
+    }
 
 
 def _attack_generation_model(temperature: float):
@@ -329,6 +488,7 @@ async def _generate_answer(
     if (
         request.mode == "defended"
         or request.regex_filter
+        or request.prompt_guard
         or not request.include_trusted_documents
         or request.allowed_untrusted_document_ids is not None
     ) and request.limit < 20:
@@ -361,17 +521,38 @@ async def _generate_answer(
                     and request.include_trusted_documents
                 )
             ]
-    candidate_limit = 20 if request.regex_filter else context_capacity
+    candidate_limit = (
+        20
+        if request.regex_filter or request.prompt_guard
+        else context_capacity
+    )
     context_hits = collect_context_hits(
         results,
         limit=candidate_limit,
         trusted_only=request.mode == "defended",
     )
     blocked_documents: list[dict[str, Any]] = []
+    detector_latency_ms = 0.0
     if request.regex_filter:
         context_hits, blocked_documents = filter_prompt_injection_hits(
             context_hits
         )
+        context_hits = context_hits[:context_capacity]
+    if request.prompt_guard:
+        try:
+            (
+                context_hits,
+                prompt_guard_blocks,
+                detector_latency_ms,
+            ) = filter_prompt_guard_hits(
+                context_hits, _prompt_guard_detector()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Prompt Guard is unavailable: {exc}",
+            ) from exc
+        blocked_documents.extend(prompt_guard_blocks)
         context_hits = context_hits[:context_capacity]
     if not context_hits:
         return {
@@ -380,6 +561,10 @@ async def _generate_answer(
             "model": OLLAMA_MODEL,
             "mode": request.mode,
             "regex_filter": request.regex_filter,
+            "prompt_guard": request.prompt_guard,
+            "detector_latency_ms": detector_latency_ms,
+            "mock_tools_enabled": request.enable_mock_tools,
+            "tool_calls": [],
             "spotlighting_methods": selected_spotlighting_methods,
             "context_capacity": context_capacity,
             "include_trusted_documents": request.include_trusted_documents,
@@ -408,18 +593,33 @@ async def _generate_answer(
             include_trust=include_trust_metadata,
         )
 
-    chain = build_rag_chain(
-        _rag_model(),
-        mode=request.mode,
-        additional_system_instruction=spotlighting_instruction,
-    )
     try:
-        generated_answer = await chain.ainvoke(
-            {
-                "question": request.query,
-                "context": context,
-            }
-        )
+        if request.enable_mock_tools:
+            mode_system_prompt = (
+                DEFENDED_SYSTEM_PROMPT
+                if request.mode == "defended"
+                else VULNERABLE_SYSTEM_PROMPT
+            )
+            generated_answer, tool_calls = await run_rag_with_mock_tools(
+                _rag_model(),
+                mode_system_prompt=mode_system_prompt,
+                additional_system_instruction=spotlighting_instruction,
+                question=request.query,
+                context=context,
+            )
+        else:
+            chain = build_rag_chain(
+                _rag_model(),
+                mode=request.mode,
+                additional_system_instruction=spotlighting_instruction,
+            )
+            generated_answer = await chain.ainvoke(
+                {
+                    "question": request.query,
+                    "context": context,
+                }
+            )
+            tool_calls = []
     except Exception as exc:
         raise HTTPException(
             status_code=503,
@@ -432,6 +632,10 @@ async def _generate_answer(
         "model": OLLAMA_MODEL,
         "mode": request.mode,
         "regex_filter": request.regex_filter,
+        "prompt_guard": request.prompt_guard,
+        "detector_latency_ms": detector_latency_ms,
+        "mock_tools_enabled": request.enable_mock_tools,
+        "tool_calls": tool_calls,
         "spotlighting_methods": selected_spotlighting_methods,
         "context_capacity": context_capacity,
         "include_trusted_documents": request.include_trusted_documents,
@@ -493,6 +697,8 @@ def _build_evaluation_response(
         attack_document_score=attack_score,
         untrusted_document_count=untrusted_count,
         documents=documents,
+        blocked_documents=answer_payload.get("blocked_documents", []),
+        detector_latency_ms=answer_payload.get("detector_latency_ms", 0.0),
     )
 
 

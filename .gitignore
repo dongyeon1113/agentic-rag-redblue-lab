@@ -218,7 +218,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project-local secrets and generated data
-secrets/*.json
+# Keep only the documentation placeholder; credentials may use formats other than JSON.
+secrets/*
+!secrets/README.md
 .env
 .env.*
 !.env.example
@@ -239,10 +241,16 @@ credentials*.json
 client_secret*.json
 token*.json
 
-# Private keys
+# Private keys and local certificates
 *.pem
 *.key
+*.p12
+*.pfx
 
-# Local IDE settings
-.vscode/
+# OS and editor-local files
+.DS_Store
+Thumbs.db
 .idea/
+.vscode/
+*.swp
+*.swo

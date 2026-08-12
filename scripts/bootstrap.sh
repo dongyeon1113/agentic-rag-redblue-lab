@@ -49,8 +49,8 @@ if [[ "$docker_root_dir" == /var/snap/docker/* ]]; then
   echo "Detected Snap Docker; applying the AppArmor compatibility override."
 fi
 
-docker compose "${compose_files[@]}" up -d --build
-docker compose "${compose_files[@]}" ps
+docker compose -p shkwon-test "${compose_files[@]}" up -d --build
+docker compose -p shkwon-test "${compose_files[@]}" ps
 
 echo
 echo "Run: python3 scripts/smoke_test.py"

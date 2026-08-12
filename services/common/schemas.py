@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -38,12 +38,30 @@ class OrchestratorQueryRequest(SearchRequest):
 class OrchestratorAnswerRequest(OrchestratorQueryRequest):
     mode: Literal["vulnerable", "defended"] = "vulnerable"
     regex_filter: bool = False
+    prompt_guard: bool = False
+    enable_mock_tools: bool = False
     context_capacity: int | None = Field(default=None, ge=1, le=20)
     include_trusted_documents: bool = True
     allowed_untrusted_document_ids: list[str] | None = Field(
         default=None,
         max_length=20,
     )
+
+
+class BipiaAnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_id: str = Field(min_length=1, max_length=120)
+    regex_filter: bool = False
+    prompt_guard: bool = False
+    spotlighting: Literal["none", "delimiting", "datamarking", "encoding"] = "none"
+
+
+class BipiaEvaluationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_limit: int = Field(default=10, ge=1, le=100)
+    regex_filter: bool = False
+    prompt_guard: bool = False
+    spotlighting: Literal["none", "delimiting", "datamarking", "encoding"] = "none"
 
 
 class ExperimentDocumentRequest(BaseModel):
@@ -111,6 +129,8 @@ class ExperimentEvaluationResponse(BaseModel):
     attack_document_score: float | None
     untrusted_document_count: int
     documents: list[SearchHit]
+    blocked_documents: list[dict[str, Any]] = Field(default_factory=list)
+    detector_latency_ms: float = 0.0
 
 
 class ExperimentComparisonRequest(OrchestratorQueryRequest):

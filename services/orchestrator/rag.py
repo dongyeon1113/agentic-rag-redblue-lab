@@ -6,6 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_ollama import ChatOllama
 
+from defenses.prompt_guard import PromptGuardDetector
 from defenses.regex_prompt_injection import detect_prompt_injection
 from defenses.spotlighting import SimplifiedSpotlighting, SpotlightingMethod
 from services.common.schemas import SearchHit
@@ -127,6 +128,43 @@ def filter_prompt_injection_hits(
         )
 
     return safe_hits, blocked_documents
+
+
+def filter_prompt_guard_hits(
+    hits: list[SearchHit],
+    detector: PromptGuardDetector,
+) -> tuple[list[SearchHit], list[dict[str, Any]], float]:
+    """Filter hits and retain auditable per-chunk detector output."""
+    safe_hits: list[SearchHit] = []
+    blocked_documents: list[dict[str, Any]] = []
+    total_latency_ms = 0.0
+    for hit in hits:
+        inspection = detector.inspect(hit)
+        total_latency_ms += inspection.latency_ms
+        if not inspection.blocked:
+            safe_hits.append(hit)
+            continue
+        blocked_documents.append(
+            {
+                "document_id": hit.document_id,
+                "source": hit.source,
+                "detector": "prompt_guard",
+                "label": inspection.label,
+                "scores": inspection.scores,
+                "reason": inspection.reason,
+                "latency_ms": inspection.latency_ms,
+                "chunks": [
+                    {
+                        "chunk_index": chunk.chunk_index,
+                        "label": chunk.label,
+                        "scores": chunk.scores,
+                        "blocked": chunk.blocked,
+                    }
+                    for chunk in inspection.chunks
+                ],
+            }
+        )
+    return safe_hits, blocked_documents, total_latency_ms
 
 
 def apply_spotlighting_to_context(
