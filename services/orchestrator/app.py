@@ -320,7 +320,7 @@ async def _generate_answer(
             ]
     context_hits = collect_context_hits(
         results,
-        limit=RAG_CONTEXT_LIMIT,
+        limit=min(request.limit, RAG_CONTEXT_LIMIT),
         trusted_only=request.mode == "defended",
     )
     if not context_hits:

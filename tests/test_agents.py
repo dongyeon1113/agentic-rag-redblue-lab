@@ -251,12 +251,22 @@ def test_orchestrator_resets_experiment_documents(monkeypatch) -> None:
 
 def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
     requested_limits = []
+    context_limits = []
 
     async def fake_query_agents(request):
         requested_limits.append(request.limit)
         return {}
 
+    def fake_collect_context_hits(_results, *, limit, trusted_only):
+        context_limits.append((limit, trusted_only))
+        return []
+
     monkeypatch.setattr(orchestrator_module, "_query_agents", fake_query_agents)
+    monkeypatch.setattr(
+        orchestrator_module,
+        "collect_context_hits",
+        fake_collect_context_hits,
+    )
     client = TestClient(orchestrator_app)
 
     defended = client.post(
@@ -292,6 +302,38 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
     assert vulnerable.status_code == 200
     assert isolated.status_code == 200
     assert requested_limits == [20, 3, 20]
+    assert context_limits == [(3, True), (3, False), (3, False)]
+
+
+def test_answer_context_respects_server_maximum(monkeypatch) -> None:
+    context_limits = []
+
+    async def fake_query_agents(_request):
+        return {}
+
+    def fake_collect_context_hits(_results, *, limit, trusted_only):
+        context_limits.append((limit, trusted_only))
+        return []
+
+    monkeypatch.setattr(orchestrator_module, "_query_agents", fake_query_agents)
+    monkeypatch.setattr(
+        orchestrator_module,
+        "collect_context_hits",
+        fake_collect_context_hits,
+    )
+
+    response = TestClient(orchestrator_app).post(
+        "/answer",
+        json={
+            "query": "What is the capital of France?",
+            "sources": ["local_db"],
+            "limit": 20,
+            "mode": "vulnerable",
+        },
+    )
+
+    assert response.status_code == 200
+    assert context_limits == [(orchestrator_module.RAG_CONTEXT_LIMIT, False)]
 
 
 def test_orchestrator_evaluates_answer_and_retrieval(monkeypatch) -> None:
