@@ -129,6 +129,16 @@ class ChromaDocumentStore:
     def count(self) -> int:
         return self.vector_store._collection.count()
 
+    def document_counts(self) -> dict[str, int]:
+        untrusted = self.vector_store.get(where={"trust": "untrusted"}, include=[])
+        untrusted_count = len(untrusted.get("ids", []))
+        total_count = self.count()
+        return {
+            "trusted": total_count - untrusted_count,
+            "untrusted": untrusted_count,
+            "total": total_count,
+        }
+
     def delete_untrusted_documents(self) -> int:
         records = self.vector_store.get(
             where={"trust": "untrusted"},

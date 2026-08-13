@@ -13,9 +13,11 @@
     button,input,select{font:inherit} button{cursor:pointer}
     .top{position:sticky;top:0;z-index:5;background:rgba(11,13,16,.94);backdrop-filter:blur(16px);
       border-bottom:1px solid var(--line);padding:14px 24px}
-    .top-inner,.layout{max-width:1600px;margin:auto}.brand{display:flex;align-items:center;gap:12px}
+    .top-inner,.layout{max-width:1600px;margin:auto}.brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
     .mark{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--red);color:#190609;font-weight:900}
     h1{font-size:17px;letter-spacing:-.02em;margin:0}.subtitle{font-size:11px;color:var(--muted);margin-top:3px}
+    .corpus-status{margin-left:auto;padding:8px 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);font-size:11px;color:var(--muted)}
+    .corpus-status strong{color:var(--text);font-size:13px;margin-right:8px}.corpus-status .poison-count{color:var(--red)}
     .layout{display:grid;grid-template-columns:350px minmax(0,1fr);gap:16px;padding:16px 24px 48px;align-items:start}
     .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
     aside.card{position:sticky;top:79px}.card-head{padding:18px 20px;border-bottom:1px solid var(--line)}
@@ -78,13 +80,14 @@
     .source-statuses{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
     @media(max-width:1180px){.layout{grid-template-columns:310px minmax(0,1fr)}.pipeline{grid-template-columns:1fr 1fr}.stage:nth-of-type(2){border-right:0}.stage:nth-of-type(-n+2){border-bottom:1px solid var(--line)}.evidence-grid{grid-template-columns:1fr}}
     @media(max-width:850px){.layout{grid-template-columns:1fr;padding:14px}aside.card{position:static}.pipeline{grid-template-columns:1fr 1fr}.metrics{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:650px){.top{padding:12px 14px}.layout{padding:10px}.answers,.benchmark{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.stage{border-right:0;border-bottom:1px solid var(--line)}.metrics{grid-template-columns:repeat(2,1fr)}.audit{grid-template-columns:1fr}.section-title{align-items:flex-start;flex-direction:column}}
+    @media(max-width:650px){.top{padding:12px 14px}.corpus-status{width:100%;margin-left:0}.layout{padding:10px}.answers,.benchmark{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.stage{border-right:0;border-bottom:1px solid var(--line)}.metrics{grid-template-columns:repeat(2,1fr)}.audit{grid-template-columns:1fr}.section-title{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
   <header class="top"><div class="top-inner brand">
     <div class="mark">P</div><div><h1>PoisonedRAG Reproduction Lab</h1>
     <div class="subtitle">USENIX Security 2025 · Black-box construction P = Q + I</div></div>
+    <div class="corpus-status" id="corpusStatus"><strong>데이터 확인 중</strong></div>
   </div></header>
   <main class="layout">
     <aside class="card">
@@ -184,6 +187,12 @@
       }
     }catch(err){$("preset").innerHTML='<option value="fallback">기본 질문 · scenario 로드 실패</option>'}
   }
+  async function loadCorpusStatus(){
+    try{
+      const r=await api("/experiments/corpus-status"), c=r.counts;
+      $("corpusStatus").innerHTML=`<strong>정상 문서 ${c.trusted.toLocaleString()}개</strong><span class="poison-count">Poison ${c.untrusted.toLocaleString()}개</span> · 전체 ${c.total.toLocaleString()}개 · ${escapeHtml(r.dataset)}`;
+    }catch(err){$("corpusStatus").innerHTML='<strong class="fail">데이터 수 확인 실패</strong>'}
+  }
   const payload = count => ({
     query:$("query").value, expected_answer:$("expected").value, attack_target:$("target").value,
     poison_count:count, top_k:+$("topk").value, max_generation_trials:+$("trials").value,
@@ -223,6 +232,7 @@
       <pre><b>① 생성된 I 원문 (${d.word_count} words)</b>\n${escapeHtml(d.instruction)}\n\n<b>② I 단독 검증 답변</b>\n${escapeHtml(d.verification_answer)}\n\n<b>③ DB에 저장되는 최종 문서 P = Q + I</b>\n${escapeHtml(d.poison_text)}</pre></details>`).join("") : '<div class="empty">N=0이므로 Poison 문서를 생성하거나 주입하지 않은 Baseline 실험입니다.</div>';
     $("retrievedDocs").innerHTML=(r.attacked.documents||[]).length?r.attacked.documents.map((d,index)=>`
       <article class="retrieved ${d.trust==='untrusted'?'poison':''}"><header><strong>#${index+1} ${escapeHtml(d.document_id)}</strong><span class="${d.trust==='untrusted'?'fail':'ok'}">${d.trust==='untrusted'?'POISON':'TRUSTED'} · ${d.score.toFixed(4)}</span></header><pre>${escapeHtml(d.text)}</pre></article>`).join(""):'<div class="empty">검색된 문서가 없습니다.</div>';
+    loadCorpusStatus();
   }
   function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
   async function loadAgentStatuses(){
@@ -258,6 +268,7 @@
   });
   loadAgentStatuses();
   loadExperimentScenarios();
+  loadCorpusStatus();
   $("questionForm").addEventListener("submit",async e=>{
     e.preventDefault();busy(true,"I 생성·검증 중…");
     try{renderRun(await api("/experiments/poisoned-rag",{method:"POST",body:JSON.stringify(payload(+$("count").value))}))}

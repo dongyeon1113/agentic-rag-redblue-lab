@@ -203,6 +203,19 @@ async def model() -> dict[str, Any]:
     }
 
 
+@app.get("/experiments/corpus-status")
+async def corpus_status() -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client, "GET", f"{AGENT_URLS['local_db']}/stats"
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Local corpus status is unavailable"
+        ) from exc
+
+
 @app.post(
     "/experiments/documents",
     response_model=ExperimentDocumentResponse,

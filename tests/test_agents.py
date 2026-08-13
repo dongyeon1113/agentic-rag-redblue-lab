@@ -134,6 +134,17 @@ def test_local_db_search_endpoint() -> None:
     assert "Paris" in hits[0]["text"]
 
 
+def test_local_db_exposes_document_counts() -> None:
+    response = TestClient(local_db_app).get("/stats")
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["dataset"] == "nq_sample"
+    assert result["backend"] == "chroma"
+    assert result["counts"]["total"] >= 3
+    assert result["counts"]["trusted"] >= 3
+
+
 def test_local_db_accepts_untrusted_experiment_document() -> None:
     client = TestClient(local_db_app)
     document_id = f"experiment-{uuid4().hex}"

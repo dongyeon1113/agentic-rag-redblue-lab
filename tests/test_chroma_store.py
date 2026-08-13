@@ -33,6 +33,7 @@ def test_chroma_store_returns_paris_document_first(tmp_path: Path) -> None:
     assert hits[0].tags == []
     assert "Paris" in hits[0].text
     assert hits[0].score > hits[1].score
+    assert store.document_counts() == {"trusted": 3, "untrusted": 0, "total": 3}
 
 
 def test_chroma_store_persists_without_duplicate_documents(tmp_path: Path) -> None:
