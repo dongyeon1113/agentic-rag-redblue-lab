@@ -200,6 +200,8 @@ class PoisonedRAGRequest(BaseModel):
     passage_word_count: int = Field(default=30, ge=10, le=120)
     generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     cleanup_before_run: bool = True
+    candidate_multiplier: int = Field(default=2, ge=1, le=5)
+    fixed_candidates: list["PoisonedRAGCandidate"] | None = Field(default=None, max_length=10)
 
     @model_validator(mode="after")
     def answers_must_differ(self) -> "PoisonedRAGRequest":
@@ -219,6 +221,10 @@ class PoisonedRAGCandidate(BaseModel):
     generation_queries: int
     generation_seconds: float
     word_count: int
+    retrieval_score: float | None = None
+    selection_score: float | None = None
+    selected: bool = False
+    rejection_reason: str | None = None
 
 
 class AttackDashboardMetrics(BaseModel):
@@ -251,6 +257,8 @@ class PoisonedRAGRunMetadata(BaseModel):
     max_generation_trials: int
     passage_word_count: int
     cleanup_before_run: bool
+    candidate_multiplier: int = 1
+    selection_policy: str = "verified_then_retrieval_score_with_deduplication"
 
 
 class PoisonedRAGResponse(BaseModel):
@@ -260,6 +268,7 @@ class PoisonedRAGResponse(BaseModel):
     scenario_name: str | None = None
     construction: Literal["black_box_q_plus_i"] = "black_box_q_plus_i"
     requested_poison_count: int
+    generated_candidate_count: int = 0
     verified_poison_count: int
     injected_poison_count: int
     top_k: int
@@ -295,6 +304,8 @@ class PoisonedRAGBenchmarkRequest(BaseModel):
     max_generation_trials: int = Field(default=10, ge=1, le=50)
     passage_word_count: int = Field(default=30, ge=10, le=120)
     generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+    candidate_multiplier: int = Field(default=2, ge=1, le=5)
+    fixed_poison_pool: bool = True
 
     @model_validator(mode="after")
     def validate_counts(self) -> "PoisonedRAGBenchmarkRequest":
@@ -339,6 +350,7 @@ class PoisonedRAGBenchmarkResponse(BaseModel):
     failures: list[PoisonedRAGRunFailure] = Field(default_factory=list)
     json_url: str
     csv_url: str
+    fixed_poison_pool: bool = False
 
 
 class AutomatedAttackResponse(BaseModel):

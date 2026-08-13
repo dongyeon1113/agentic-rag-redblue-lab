@@ -43,7 +43,9 @@ from services.orchestrator.evaluation import (
     evaluate_retrieval,
 )
 from services.orchestrator.poisoned_rag import (
+    GeneratedPoison,
     generate_poison_set,
+    select_diverse_candidates,
 )
 from services.orchestrator.rag import (
     build_rag_chain,
@@ -467,6 +469,7 @@ async def run_poisoned_rag_experiment(
         await reset_experiment_documents()
 
     run_id = uuid4().hex[:12]
+    candidate_count = request.poison_count * request.candidate_multiplier
     placeholder_ids = [f"poisonedrag-{run_id}-{index}" for index in range(1, request.poison_count + 1)]
     baseline_request = ExperimentEvaluationRequest(
         query=request.query,
@@ -483,28 +486,41 @@ async def run_poisoned_rag_experiment(
         await _generate_answer(baseline_request),
     )
 
-    try:
-        generated = await generate_poison_set(
-            _attack_generation_model(request.generation_temperature),
-            answer_with_context=_answer_with_supplied_context,
-            query=request.query,
-            attack_target=request.attack_target,
-            count=request.poison_count,
-            word_count=request.passage_word_count,
-            max_trials=request.max_generation_trials,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"PoisonedRAG generation failed with {OLLAMA_MODEL}: {exc}",
-        ) from exc
+    if request.fixed_candidates is not None:
+        generated = [
+            GeneratedPoison(
+                instruction=item.instruction,
+                poison_text=item.poison_text,
+                verification_answer=item.verification_answer,
+                verified=item.verified,
+                generation_queries=0,
+                generation_seconds=0.0,
+                word_count=item.word_count,
+            )
+            for item in request.fixed_candidates[:request.poison_count]
+        ]
+    else:
+        try:
+            generated = await generate_poison_set(
+                _attack_generation_model(request.generation_temperature),
+                answer_with_context=_answer_with_supplied_context,
+                query=request.query,
+                attack_target=request.attack_target,
+                count=candidate_count,
+                word_count=request.passage_word_count,
+                max_trials=request.max_generation_trials,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"PoisonedRAG generation failed with {OLLAMA_MODEL}: {exc}",
+            ) from exc
 
-    generated_documents: list[PoisonedRAGCandidate] = []
-    document_ids: list[str] = []
+    candidate_ids: list[str] = []
     for index, item in enumerate(generated, start=1):
         document_id = f"poisonedrag-{run_id}-{index}"
         if item.verified:
-            document_ids.append(document_id)
+            candidate_ids.append(document_id)
             await create_experiment_document(
                 ExperimentDocumentRequest(
                     document_id=document_id,
@@ -519,6 +535,39 @@ async def run_poisoned_rag_experiment(
                     text=item.poison_text,
                 )
             )
+    retrieval_results = await _query_agents(
+        OrchestratorQueryRequest(query=request.query, sources=["local_db"], limit=20)
+    )
+    retrieval_scores = {
+        hit["document_id"]: float(hit["score"])
+        for hit in retrieval_results.get("local_db", {}).get("hits", [])
+    }
+    ranked_candidates = [
+        (index, item, retrieval_scores.get(f"poisonedrag-{run_id}-{index}", 0.0))
+        for index, item in enumerate(generated, start=1)
+    ]
+    selected_indexes, rejection_reasons = select_diverse_candidates(
+        ranked_candidates, count=request.poison_count
+    )
+    selected_set = set(selected_indexes)
+    await _delete_experiment_documents(candidate_ids)
+
+    generated_documents: list[PoisonedRAGCandidate] = []
+    document_ids: list[str] = []
+    for index, item in enumerate(generated, start=1):
+        document_id = f"poisonedrag-{run_id}-{index}"
+        selected = index in selected_set
+        if selected:
+            document_ids.append(document_id)
+            await create_experiment_document(
+                ExperimentDocumentRequest(
+                    document_id=document_id,
+                    source="poisonedrag-black-box",
+                    tags=["controlled", "poison", "poisonedrag", "black-box", "q-plus-i", "selected"],
+                    text=item.poison_text,
+                )
+            )
+        score = retrieval_scores.get(document_id, 0.0)
         generated_documents.append(
             PoisonedRAGCandidate(
                 document_id=document_id,
@@ -529,6 +578,10 @@ async def run_poisoned_rag_experiment(
                 generation_queries=item.generation_queries,
                 generation_seconds=item.generation_seconds,
                 word_count=item.word_count,
+                retrieval_score=round(score, 6),
+                selection_score=round(score, 6) if item.verified else None,
+                selected=selected,
+                rejection_reason=rejection_reasons.get(index),
             )
         )
 
@@ -577,7 +630,7 @@ async def run_poisoned_rag_experiment(
         "skipped"
         if request.poison_count == 0
         else "completed"
-        if verified_count == request.poison_count
+        if len(document_ids) == request.poison_count
         else "partial"
     )
     injection_status = (
@@ -591,6 +644,7 @@ async def run_poisoned_rag_experiment(
     return PoisonedRAGResponse(
         run_id=run_id,
         requested_poison_count=request.poison_count,
+        generated_candidate_count=len(generated),
         verified_poison_count=verified_count,
         injected_poison_count=len(document_ids),
         top_k=request.top_k,
@@ -609,6 +663,7 @@ async def run_poisoned_rag_experiment(
             max_generation_trials=request.max_generation_trials,
             passage_word_count=request.passage_word_count,
             cleanup_before_run=request.cleanup_before_run,
+            candidate_multiplier=request.candidate_multiplier,
         ),
         metrics=metrics,
         baseline=baseline,
@@ -650,8 +705,43 @@ async def run_poisoned_rag_benchmark(
     runs: list[PoisonedRAGResponse] = []
     failures: list[PoisonedRAGRunFailure] = []
     for scenario in request.scenarios:
-        for poison_count in request.poison_counts:
-            for repetition in range(1, request.repetitions + 1):
+        for repetition in range(1, request.repetitions + 1):
+            fixed_candidates: list[PoisonedRAGCandidate] | None = None
+            if request.fixed_poison_pool and max(request.poison_counts) > 0:
+                pool_started = perf_counter()
+                try:
+                    pool_run = await run_poisoned_rag_experiment(
+                        PoisonedRAGRequest(
+                            query=scenario.query,
+                            expected_answer=scenario.expected_answer,
+                            attack_target=scenario.attack_target,
+                            poison_count=max(request.poison_counts),
+                            top_k=request.top_k,
+                            max_generation_trials=request.max_generation_trials,
+                            passage_word_count=request.passage_word_count,
+                            generation_temperature=request.generation_temperature,
+                            cleanup_before_run=True,
+                            candidate_multiplier=request.candidate_multiplier,
+                        )
+                    )
+                except Exception as exc:
+                    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                    for poison_count in request.poison_counts:
+                        failures.append(PoisonedRAGRunFailure(
+                            scenario_name=scenario.name,
+                            poison_count=poison_count,
+                            repetition=repetition,
+                            stage="generation",
+                            error_type=type(exc).__name__,
+                            detail=str(detail)[:1000],
+                            elapsed_seconds=round(perf_counter() - pool_started, 3),
+                        ))
+                    continue
+                fixed_candidates = sorted(
+                    (item for item in pool_run.generated_documents if item.selected),
+                    key=lambda item: (-(item.selection_score or 0.0), item.document_id),
+                )
+            for poison_count in request.poison_counts:
                 attempt_started = perf_counter()
                 try:
                     run = await run_poisoned_rag_experiment(
@@ -665,6 +755,8 @@ async def run_poisoned_rag_benchmark(
                             passage_word_count=request.passage_word_count,
                             generation_temperature=request.generation_temperature,
                             cleanup_before_run=True,
+                            candidate_multiplier=(1 if fixed_candidates is not None else request.candidate_multiplier),
+                            fixed_candidates=fixed_candidates,
                         )
                     )
                 except Exception as exc:
@@ -724,6 +816,7 @@ async def run_poisoned_rag_benchmark(
         failures=failures,
         json_url=f"/experiments/results/{experiment_id}.json",
         csv_url=f"/experiments/results/{experiment_id}.csv",
+        fixed_poison_pool=request.fixed_poison_pool,
     )
     _write_benchmark_artifacts(result)
     await reset_experiment_documents()
