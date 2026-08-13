@@ -53,6 +53,10 @@
     .docs{display:grid;gap:10px}.doc{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:14px}
     .doc summary{cursor:pointer;font-size:12px;font-weight:900}.doc pre{white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,monospace;color:#bfcdea}
     .tag{display:inline-block;margin-left:7px;padding:3px 7px;border-radius:99px;font-size:9px;background:#273853}
+    .evidence{border:1px solid #4a668f;box-shadow:0 0 0 1px #73a4ff18}
+    .audit{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+    .audit div{padding:10px;border-radius:10px;background:#0b1220;border:1px solid var(--line)}
+    .audit span{display:block;color:var(--muted);font-size:9px;margin-bottom:5px}.audit strong{font-size:11px;word-break:break-all}
     .ok{color:var(--green)}.fail{color:var(--red)}
     .benchmark{display:grid;grid-template-columns:1fr 280px;gap:16px}.chart{display:flex;align-items:end;gap:18px;height:220px;padding:25px 15px 8px;border-left:1px solid var(--line);border-bottom:1px solid var(--line)}
     .bar-group{height:100%;flex:1;display:flex;align-items:end;justify-content:center;gap:5px;position:relative}
@@ -72,7 +76,7 @@
     .source-badge{padding:3px 8px;border-radius:99px;background:#253a5d;color:#cfe0ff;font-size:9px;font-weight:900}
     .source-statuses{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
     @media(max-width:1050px){.layout{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.metrics{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:650px){.layout{padding:12px}.answers,.benchmark{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:650px){.layout{padding:12px}.answers,.benchmark{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.audit{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
@@ -128,6 +132,11 @@
         <div class="stage"><small>03 · 주입·검색</small><strong id="pRetrieve">주입 대기</strong><span>검증 통과 문서만 주입 후 Top-K 검색</span></div><div class="arrow">→</div>
         <div class="stage"><small>04 · ANSWER</small><strong id="pAnswer">평가 대기</strong><span>정답·목표 답변을 함께 판정</span></div>
       </section>
+      <section class="card section evidence" id="poisonEvidence">
+        <div class="section-title"><h3>핵심 증거 · 생성 및 주입된 Poison 문서</h3><span class="status" id="docStatus">실험 실행 전</span></div>
+        <div class="audit" id="runAudit"><div><span>생성 정책</span><strong>실행마다 새로 생성</strong></div><div><span>기존 문서 처리</span><strong>실행 전 자동 초기화</strong></div><div><span>검증 정책</span><strong>목표 답변 출력 문서만 주입</strong></div><div><span>추적 정보</span><strong>실행 ID 대기</strong></div></div>
+        <div class="docs" id="generatedDocs"><div class="empty">실험 후 문서 원문, 검증 답변, 주입 여부와 검색 순위가 여기에 표시됩니다.</div></div>
+      </section>
       <section class="metrics">
         <div class="metric"><span>Attack Success Rate</span><strong id="mAsr">—</strong></div>
         <div class="metric"><span>정상 정확도</span><strong id="mAccuracy">—</strong></div>
@@ -140,10 +149,6 @@
       <section class="answers">
         <article class="card answer baseline"><h3>① 주입 전 Baseline</h3><pre id="baselineAnswer">실험 전입니다.</pre></article>
         <article class="card answer attacked"><h3>② PoisonedRAG 적용 결과</h3><pre id="attackedAnswer">실험 전입니다.</pre></article>
-      </section>
-      <section class="card section">
-        <div class="section-title"><h3>생성·검증된 Poison 문서 전체</h3><span class="status" id="docStatus">P = Q + I를 그대로 확인할 수 있습니다.</span></div>
-        <div class="docs" id="generatedDocs"><div class="empty">아직 생성된 문서가 없습니다.</div></div>
       </section>
       <section class="card section">
         <div class="section-title"><h3>N별 반복 평가</h3><span class="status" id="benchmarkStatus">0·1·3·5개를 연속 실행합니다.</span></div>
@@ -192,6 +197,7 @@
     if(on)$("pGenerate").textContent=label;
   }
   function renderRun(r){
+    const retrievedById=new Map((r.attacked.documents||[]).map((d,index)=>[d.document_id,{rank:index+1,score:d.score}]));
     $("pQuestion").textContent=r.baseline.query;
     $("pGenerate").textContent=`${r.verified_poison_count}/${r.requested_poison_count}개 검증 · ${r.pipeline.generation}`;
     $("pRetrieve").textContent=`${r.injected_poison_count}개 주입 · ${r.metrics.poison_in_top_k}/${r.metrics.top_k}개 검색`;
@@ -201,10 +207,15 @@
     $("mPrecision").textContent=pct(r.metrics.retrieval_precision); $("mRecall").textContent=pct(r.metrics.retrieval_recall); $("mF1").textContent=pct(r.metrics.retrieval_f1);
     $("mTotalTime").textContent=`${r.metrics.total_seconds.toFixed(1)}초`;
     $("baselineAnswer").textContent=r.baseline.answer; $("attackedAnswer").textContent=r.attacked.answer;
-    $("docStatus").textContent=`생성 ${r.metrics.generation_queries}회/${r.metrics.generation_seconds.toFixed(1)}초 · 전체 ${r.metrics.total_seconds.toFixed(1)}초 · ${r.metadata.model}`;
+    $("docStatus").textContent=`검증 ${r.verified_poison_count}/${r.requested_poison_count} · 주입 ${r.injected_poison_count} · Top-K 진입 ${r.metrics.poison_in_top_k}`;
+    $("runAudit").innerHTML=`
+      <div><span>실행 ID</span><strong>${escapeHtml(r.run_id)}</strong></div>
+      <div><span>생성 정책</span><strong>실행마다 전부 새로 생성</strong></div>
+      <div><span>초기화</span><strong>${r.metadata.cleanup_before_run?'실행 전 기존 Poison 삭제':'기존 Poison 유지'}</strong></div>
+      <div><span>모델 / 생성 조건</span><strong>${escapeHtml(r.metadata.model)} · T=${r.metadata.generation_temperature} · L=${r.metadata.max_generation_trials}</strong></div>`;
     $("generatedDocs").innerHTML = r.generated_documents.length ? r.generated_documents.map((d,i)=>`
-      <details class="doc" ${i===0?"open":""}><summary>#${i+1} ${d.verified?'<span class="ok">검증 통과</span>':'<span class="fail">검증 실패·미주입</span>'}<span class="tag">${d.generation_queries} queries</span><span class="tag">${d.word_count} words</span></summary>
-      <pre><b>I (generation condition)</b>\n${escapeHtml(d.instruction)}\n\n<b>Verification answer</b>\n${escapeHtml(d.verification_answer)}\n\n<b>P = Q + I (final poison)</b>\n${escapeHtml(d.poison_text)}</pre></details>`).join("") : '<div class="empty">N=0 baseline 실험입니다.</div>';
+      <details class="doc" ${i===0?"open":""}><summary>#${i+1} ${escapeHtml(d.document_id)} ${d.verified?'<span class="ok">검증 통과</span>':'<span class="fail">검증 실패</span>'}${r.document_ids.includes(d.document_id)?'<span class="tag ok">DB 주입됨</span>':'<span class="tag fail">미주입</span>'}${retrievedById.has(d.document_id)?`<span class="tag ok">Top-K ${retrievedById.get(d.document_id).rank}위 · score ${retrievedById.get(d.document_id).score.toFixed(4)}</span>`:'<span class="tag">Top-K 미진입</span>'}<span class="tag">생성 ${d.generation_queries}회</span></summary>
+      <pre><b>① 생성된 I 원문 (${d.word_count} words)</b>\n${escapeHtml(d.instruction)}\n\n<b>② I 단독 검증 답변</b>\n${escapeHtml(d.verification_answer)}\n\n<b>③ DB에 저장되는 최종 문서 P = Q + I</b>\n${escapeHtml(d.poison_text)}</pre></details>`).join("") : '<div class="empty">N=0이므로 Poison 문서를 생성하거나 주입하지 않은 Baseline 실험입니다.</div>';
   }
   function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
   async function loadAgentStatuses(){
