@@ -33,8 +33,16 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
-        existing = self.vector_store.get(include=["metadatas"])
-        existing_ids = {str(document_id) for document_id in existing.get("ids", [])}
+        existing_ids_list: list[str] = []
+        existing_metadatas: list[dict[str, object] | None] = []
+        page_size = 5_000
+        for offset in range(0, self.count(), page_size):
+            page = self.vector_store.get(
+                include=["metadatas"], limit=page_size, offset=offset
+            )
+            existing_ids_list.extend(str(item) for item in page.get("ids", []))
+            existing_metadatas.extend(page.get("metadatas", []))
+        existing_ids = set(existing_ids_list)
         sync_trusted = os.getenv("CHROMA_SYNC_TRUSTED_CORPUS", "false").lower() in {
             "1", "true", "yes"
         }
@@ -43,8 +51,8 @@ class ChromaDocumentStore:
             stale_trusted_ids = [
                 str(document_id)
                 for document_id, metadata in zip(
-                    existing.get("ids", []),
-                    existing.get("metadatas", []),
+                    existing_ids_list,
+                    existing_metadatas,
                 )
                 if (metadata or {}).get("trust") == "trusted"
                 and str(document_id) not in desired_ids
