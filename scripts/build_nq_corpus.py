@@ -1,4 +1,4 @@
-"""Build a reproducible 10,000-document BEIR NQ experiment corpus.
+"""Build a reproducible BEIR NQ experiment corpus of a requested size.
 
 The selected corpus always contains every qrels document for the supplied
 RAGDefender target queries. Remaining documents are selected with a fixed seed.

@@ -130,12 +130,12 @@ services:
     environment:
       APP_VERSION: ${APP_VERSION:-0.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATA_FILE: /app/datasets/generated/nq_10000.json
+      DATA_FILE: /app/datasets/generated/nq_100000.json
       SEARCH_BACKEND: chroma
       EMBEDDING_BACKEND: ollama
       OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
-      CHROMA_INDEX_BATCH_SIZE: 100
+      CHROMA_INDEX_BATCH_SIZE: 500
       CHROMA_COLLECTION: local-db-nomic-v1
       CHROMA_PERSIST_DIRECTORY: /app/data/chroma
       CHROMA_SYNC_TRUSTED_CORPUS: "true"

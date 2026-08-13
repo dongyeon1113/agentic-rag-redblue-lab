@@ -33,12 +33,13 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
+        existing = self.vector_store.get(include=["metadatas"])
+        existing_ids = {str(document_id) for document_id in existing.get("ids", [])}
         sync_trusted = os.getenv("CHROMA_SYNC_TRUSTED_CORPUS", "false").lower() in {
             "1", "true", "yes"
         }
         if sync_trusted:
             desired_ids = {str(record["id"]) for record in records}
-            existing = self.vector_store.get(include=["metadatas"])
             stale_trusted_ids = [
                 str(document_id)
                 for document_id, metadata in zip(
@@ -50,6 +51,11 @@ class ChromaDocumentStore:
             ]
             if stale_trusted_ids:
                 self.vector_store.delete(ids=stale_trusted_ids)
+                existing_ids.difference_update(stale_trusted_ids)
+
+        pending_records = [
+            record for record in records if str(record["id"]) not in existing_ids
+        ]
 
         documents = [
             Document(
@@ -61,14 +67,14 @@ class ChromaDocumentStore:
                     "tags": json.dumps(record.get("tags", [])),
                 },
             )
-            for record in records
+            for record in pending_records
         ]
         batch_size = max(1, int(os.getenv("CHROMA_INDEX_BATCH_SIZE", "1000")))
-        for start in range(0, len(records), batch_size):
+        for start in range(0, len(pending_records), batch_size):
             end = start + batch_size
             self.vector_store.add_documents(
                 documents=documents[start:end],
-                ids=[record["id"] for record in records[start:end]],
+                ids=[record["id"] for record in pending_records[start:end]],
             )
 
     def search(self, query: str, limit: int) -> list[SearchHit]:

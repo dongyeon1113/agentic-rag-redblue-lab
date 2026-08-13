@@ -2,8 +2,19 @@ import json
 from pathlib import Path
 
 from services.common.chroma_store import ChromaDocumentStore
+from services.common.embeddings import DeterministicHashEmbeddings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class CountingEmbeddings(DeterministicHashEmbeddings):
+    def __init__(self) -> None:
+        super().__init__()
+        self.document_count = 0
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.document_count += len(texts)
+        return super().embed_documents(texts)
 
 
 def test_chroma_store_returns_paris_document_first(tmp_path: Path) -> None:
@@ -41,6 +52,23 @@ def test_chroma_store_persists_without_duplicate_documents(tmp_path: Path) -> No
 
     assert first_store.count() == 3
     assert second_store.count() == 3
+
+
+def test_chroma_store_does_not_reembed_existing_documents(tmp_path: Path) -> None:
+    embedding = CountingEmbeddings()
+    options = {
+        "data_file": PROJECT_ROOT / "datasets/sample/nq_sample.json",
+        "collection_name": "test-no-reembedding",
+        "persist_directory": tmp_path / "chroma",
+        "embedding": embedding,
+    }
+
+    ChromaDocumentStore(**options)
+    first_count = embedding.document_count
+    ChromaDocumentStore(**options)
+
+    assert first_count == 3
+    assert embedding.document_count == first_count
 
 
 def test_chroma_store_deletes_only_untrusted_documents(tmp_path: Path) -> None:
