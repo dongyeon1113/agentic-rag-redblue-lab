@@ -14,6 +14,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from services.common.schemas import (
+    AgentPoisonBenchmarkFailure,
+    AgentPoisonBenchmarkPoint,
+    AgentPoisonBenchmarkRequest,
+    AgentPoisonBenchmarkResponse,
+    AgentPoisonMetrics,
+    AgentPoisonRequest,
+    AgentPoisonResponse,
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
     ExperimentDocumentRequest,
@@ -36,11 +43,16 @@ from services.common.schemas import (
     PoisonedRAGRunMetadata,
     SearchHit,
 )
+from services.common.embeddings import create_embeddings
+from services.common.search import load_json_documents
+from services.orchestrator.agent_poison import optimize_trigger, rank_memory
 from services.orchestrator.evaluation import (
     answer_accuracy,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
+    normalize_text,
+    phrase_present,
 )
 from services.orchestrator.poisoned_rag import (
     GeneratedPoison,
@@ -836,9 +848,204 @@ async def run_poisoned_rag_benchmark(
     return result
 
 
+@app.post("/experiments/agent-poison", response_model=AgentPoisonResponse)
+async def run_agent_poison_experiment(
+    request: AgentPoisonRequest,
+) -> AgentPoisonResponse:
+    """Run an isolated AgentPoison reproduction without mutating Chroma."""
+    run_id = f"agentpoison-{uuid4().hex[:12]}"
+    records = load_json_documents(
+        Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"
+    )[: request.benign_corpus_limit]
+    benign_memories = [
+        (str(item["text"]), str(item["text"]), False) for item in records
+    ]
+    embedding = create_embeddings()
+    best, history = optimize_trigger(
+        embedding,
+        queries=request.train_queries,
+        benign_texts=[key for key, _value, _poisoned in benign_memories],
+        seed_trigger=request.seed_trigger,
+        candidate_tokens=request.candidate_tokens,
+        iterations=request.iterations,
+    )
+    poison_memories = [
+        (
+            f"{request.train_queries[index % len(request.train_queries)]} {best.trigger}",
+            request.target_action,
+            True,
+        )
+        for index in range(request.poison_count)
+    ]
+    poisoned_memory = benign_memories + poison_memories
+    trials: list[dict[str, object]] = []
+    retrieval_successes = action_successes = end_to_end_successes = preserved = 0
+    for query in request.test_queries:
+        clean_ranked = rank_memory(
+            embedding, query=query, memories=benign_memories, top_k=request.top_k
+        )
+        clean_under_poison = rank_memory(
+            embedding, query=query, memories=poisoned_memory, top_k=request.top_k
+        )
+        triggered_query = f"{query} {best.trigger}"
+        triggered_ranked = rank_memory(
+            embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
+        )
+        retrieved = any(item[2] for item in triggered_ranked)
+        clean_answer = await _answer_with_supplied_context(
+            query, "\n\n".join(item[1] for item in clean_ranked)
+        )
+        clean_poisoned_answer = await _answer_with_supplied_context(
+            query, "\n\n".join(item[1] for item in clean_under_poison)
+        )
+        triggered_answer = await _answer_with_supplied_context(
+            triggered_query, "\n\n".join(item[1] for item in triggered_ranked)
+        )
+        action_succeeded = phrase_present(triggered_answer, request.target_action)
+        retrieval_successes += int(retrieved)
+        action_successes += int(retrieved and action_succeeded)
+        end_to_end_successes += int(action_succeeded)
+        preserved += int(normalize_text(clean_answer) == normalize_text(clean_poisoned_answer))
+        trials.append({
+            "query": query,
+            "triggered_query": triggered_query,
+            "retrieval_success": retrieved,
+            "poison_in_top_k": sum(item[2] for item in triggered_ranked),
+            "action_succeeded": action_succeeded,
+            "clean_answer": clean_answer,
+            "clean_under_poison_answer": clean_poisoned_answer,
+            "triggered_answer": triggered_answer,
+            "retrieved": [
+                {"key": key, "value": value, "poisoned": poisoned, "score": round(score, 6)}
+                for key, value, poisoned, score in triggered_ranked
+            ],
+        })
+    total = len(request.test_queries)
+    metrics = AgentPoisonMetrics(
+        asr_r=round(retrieval_successes / total, 4),
+        asr_a=round(action_successes / retrieval_successes, 4) if retrieval_successes else 0.0,
+        asr_t=round(end_to_end_successes / total, 4),
+        benign_accuracy=round(preserved / total, 4),
+        poison_rate=round(request.poison_count / len(poisoned_memory), 6),
+    )
+    result = AgentPoisonResponse(
+        run_id=run_id,
+        trigger=best.trigger,
+        objective=best.objective,
+        uniqueness=best.uniqueness,
+        compactness=best.compactness,
+        objective_history=[item.objective for item in history],
+        target_action=request.target_action,
+        poison_count=request.poison_count,
+        corpus_count=len(poisoned_memory),
+        metrics=metrics,
+        trials=trials,
+    )
+    EXPERIMENT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    (EXPERIMENT_RESULTS_DIR / f"{run_id}.json").write_text(
+        json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return result
+
+
+def _write_agent_poison_benchmark_artifacts(
+    result: AgentPoisonBenchmarkResponse,
+) -> None:
+    EXPERIMENT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    json_path = EXPERIMENT_RESULTS_DIR / f"{result.experiment_id}.json"
+    csv_path = EXPERIMENT_RESULTS_DIR / f"{result.experiment_id}.csv"
+    json_path.write_text(
+        json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    with csv_path.open("w", encoding="utf-8", newline="") as output:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=list(AgentPoisonBenchmarkPoint.model_fields),
+        )
+        writer.writeheader()
+        writer.writerows(point.model_dump() for point in result.points)
+
+
+@app.post(
+    "/experiments/agent-poison/benchmark",
+    response_model=AgentPoisonBenchmarkResponse,
+)
+async def run_agent_poison_benchmark(
+    request: AgentPoisonBenchmarkRequest,
+) -> AgentPoisonBenchmarkResponse:
+    """Sweep poison_count for a fixed AgentPoison scenario, in-memory only."""
+    experiment_id = f"agentpoison-bench-{uuid4().hex[:12]}"
+    runs: list[AgentPoisonResponse] = []
+    failures: list[AgentPoisonBenchmarkFailure] = []
+    for poison_count in request.poison_counts:
+        for repetition in range(1, request.repetitions + 1):
+            attempt_started = perf_counter()
+            try:
+                run = await run_agent_poison_experiment(
+                    AgentPoisonRequest(
+                        train_queries=request.train_queries,
+                        test_queries=request.test_queries,
+                        target_action=request.target_action,
+                        seed_trigger=request.seed_trigger,
+                        candidate_tokens=request.candidate_tokens,
+                        poison_count=poison_count,
+                        top_k=request.top_k,
+                        iterations=request.iterations,
+                        benign_corpus_limit=request.benign_corpus_limit,
+                    )
+                )
+            except Exception as exc:
+                detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                failures.append(
+                    AgentPoisonBenchmarkFailure(
+                        poison_count=poison_count,
+                        repetition=repetition,
+                        error_type=type(exc).__name__,
+                        detail=str(detail)[:1000],
+                        elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                    )
+                )
+                continue
+            runs.append(run)
+
+    points: list[AgentPoisonBenchmarkPoint] = []
+    for poison_count in request.poison_counts:
+        selected = [run for run in runs if run.poison_count == poison_count]
+        selected_failures = [
+            failure for failure in failures if failure.poison_count == poison_count
+        ]
+        points.append(
+            AgentPoisonBenchmarkPoint(
+                poison_count=poison_count,
+                trials=len(selected) + len(selected_failures),
+                successful_trials=len(selected),
+                failed_trials=len(selected_failures),
+                asr_r=_mean([run.metrics.asr_r for run in selected]),
+                asr_a=_mean([run.metrics.asr_a for run in selected]),
+                asr_t=_mean([run.metrics.asr_t for run in selected]),
+                benign_accuracy=_mean([run.metrics.benign_accuracy for run in selected]),
+                average_poison_rate=_mean([run.metrics.poison_rate for run in selected]),
+            )
+        )
+
+    result = AgentPoisonBenchmarkResponse(
+        experiment_id=experiment_id,
+        model=OLLAMA_MODEL,
+        points=points,
+        runs=runs,
+        failures=failures,
+        json_url=f"/experiments/results/{experiment_id}.json",
+        csv_url=f"/experiments/results/{experiment_id}.csv",
+    )
+    _write_agent_poison_benchmark_artifacts(result)
+    return result
+
+
 @app.get("/experiments/results/{filename}")
 async def download_experiment_result(filename: str) -> FileResponse:
-    if not filename.startswith("poisonedrag-") or not filename.endswith((".json", ".csv")):
+    if not filename.startswith(("poisonedrag-", "agentpoison-")) or not filename.endswith((".json", ".csv")):
         raise HTTPException(status_code=404, detail="Experiment result not found")
     path = EXPERIMENT_RESULTS_DIR / filename
     if not path.is_file():

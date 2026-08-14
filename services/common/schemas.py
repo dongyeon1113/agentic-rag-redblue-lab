@@ -415,3 +415,106 @@ class RatioSweepResponse(BaseModel):
     ratios: list[Literal[0, 1, 2, 4, 6]]
     points: list[RatioSweepPoint]
     cleaned_document_count: int
+
+
+class AgentPoisonRequest(BaseModel):
+    """Bounded, in-memory AgentPoison reproduction request."""
+
+    model_config = ConfigDict(extra="forbid")
+    train_queries: list[str] = Field(min_length=2, max_length=50)
+    test_queries: list[str] = Field(min_length=1, max_length=50)
+    target_action: str = Field(min_length=1, max_length=500)
+    seed_trigger: str = Field(default="please respond carefully", min_length=1, max_length=120)
+    candidate_tokens: list[str] = Field(
+        default_factory=lambda: ["carefully", "smoothly", "notably", "quietly", "parallel", "signal"],
+        min_length=2,
+        max_length=40,
+    )
+    poison_count: int = Field(default=3, ge=1, le=10)
+    top_k: int = Field(default=3, ge=1, le=10)
+    iterations: int = Field(default=8, ge=1, le=50)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+
+
+class AgentPoisonMetrics(BaseModel):
+    asr_r: float
+    asr_a: float
+    asr_t: float
+    benign_accuracy: float
+    poison_rate: float
+
+
+class AgentPoisonResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    strategy: Literal["agentpoison"] = "agentpoison"
+    run_id: str
+    optimizer: Literal["embedding_discrete_beam_surrogate"] = "embedding_discrete_beam_surrogate"
+    isolation: Literal["in_memory_no_database_writes"] = "in_memory_no_database_writes"
+    trigger: str
+    objective: float
+    uniqueness: float
+    compactness: float
+    objective_history: list[float]
+    target_action: str
+    poison_count: int
+    corpus_count: int
+    metrics: AgentPoisonMetrics
+    trials: list[dict[str, object]]
+
+
+class AgentPoisonBenchmarkRequest(BaseModel):
+    """Sweep poison_count for a fixed AgentPoison scenario, in-memory only."""
+
+    model_config = ConfigDict(extra="forbid")
+    train_queries: list[str] = Field(min_length=2, max_length=50)
+    test_queries: list[str] = Field(min_length=1, max_length=50)
+    target_action: str = Field(min_length=1, max_length=500)
+    seed_trigger: str = Field(default="please respond carefully", min_length=1, max_length=120)
+    candidate_tokens: list[str] = Field(
+        default_factory=lambda: ["carefully", "smoothly", "notably", "quietly", "parallel", "signal"],
+        min_length=2,
+        max_length=40,
+    )
+    poison_counts: list[int] = Field(default_factory=lambda: [1, 3, 5], min_length=1, max_length=6)
+    repetitions: int = Field(default=1, ge=1, le=5)
+    top_k: int = Field(default=3, ge=1, le=10)
+    iterations: int = Field(default=8, ge=1, le=50)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "AgentPoisonBenchmarkRequest":
+        if any(count < 1 or count > 10 for count in self.poison_counts):
+            raise ValueError("poison_counts values must be between 1 and 10")
+        self.poison_counts = sorted(set(self.poison_counts))
+        return self
+
+
+class AgentPoisonBenchmarkPoint(BaseModel):
+    poison_count: int
+    trials: int
+    successful_trials: int = 0
+    failed_trials: int = 0
+    asr_r: float
+    asr_a: float
+    asr_t: float
+    benign_accuracy: float
+    average_poison_rate: float
+
+
+class AgentPoisonBenchmarkFailure(BaseModel):
+    poison_count: int
+    repetition: int
+    error_type: str
+    detail: str
+    elapsed_seconds: float
+
+
+class AgentPoisonBenchmarkResponse(BaseModel):
+    status: Literal["completed"] = "completed"
+    experiment_id: str
+    model: str
+    points: list[AgentPoisonBenchmarkPoint]
+    runs: list[AgentPoisonResponse]
+    failures: list[AgentPoisonBenchmarkFailure] = Field(default_factory=list)
+    json_url: str
+    csv_url: str
