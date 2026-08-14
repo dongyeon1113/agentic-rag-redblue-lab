@@ -1,7 +1,12 @@
 import pytest
 
 from services.common.embeddings import DeterministicHashEmbeddings
-from services.orchestrator.agent_poison import optimize_trigger, rank_memory, score_trigger
+from services.orchestrator.agent_poison import (
+    optimize_trigger,
+    rank_memory,
+    retrieval_success,
+    score_trigger,
+)
 
 
 def test_trigger_optimizer_is_deterministic_and_reports_paper_losses() -> None:
@@ -37,6 +42,18 @@ def test_triggered_query_retrieves_matching_poison_memory() -> None:
 
     assert ranked[0][2] is True
     assert ranked[0][1] == "target action"
+
+
+def test_retrieval_success_requires_every_topk_item_poisoned() -> None:
+    """Paper Appendix A.1.2: a partially poisoned top-k must not count as ASR-r success."""
+    all_poisoned = [("k1", "v1", True, 0.9), ("k2", "v2", True, 0.8)]
+    mixed = [("k1", "v1", True, 0.9), ("k2", "v2", False, 0.8)]
+    none_poisoned = [("k1", "v1", False, 0.9)]
+
+    assert retrieval_success(all_poisoned) is True
+    assert retrieval_success(mixed) is False
+    assert retrieval_success(none_poisoned) is False
+    assert retrieval_success([]) is False
 
 
 def test_empty_inputs_are_rejected() -> None:

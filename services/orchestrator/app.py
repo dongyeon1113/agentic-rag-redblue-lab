@@ -45,7 +45,7 @@ from services.common.schemas import (
 )
 from services.common.embeddings import create_embeddings
 from services.common.search import load_json_documents
-from services.orchestrator.agent_poison import optimize_trigger, rank_memory
+from services.orchestrator.agent_poison import optimize_trigger, rank_memory, retrieval_success
 from services.orchestrator.evaluation import (
     answer_accuracy,
     attack_success_rate,
@@ -891,7 +891,7 @@ async def run_agent_poison_experiment(
         triggered_ranked = rank_memory(
             embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
         )
-        retrieved = any(item[2] for item in triggered_ranked)
+        retrieved = retrieval_success(triggered_ranked)
         clean_answer = await _answer_with_supplied_context(
             query, "\n\n".join(item[1] for item in clean_ranked)
         )

@@ -10,7 +10,7 @@
   - 대안 objective `compute_avg_embedding_similarity`(cpa 알고리즘)도 지원.
 - **트리거 탐색**: gradient-guided HotFlip.
   1. 매 iteration마다 학습 배치(`num_grad_iter=30`)에 대해 objective를 역전파해 트리거 토큰 임베딩의 gradient를 누적.
-  2. 무작위로 고른 한 토큰 위치(`token_to_flip`)에 대해 `gradient_dot_embedding_matrix`로 상위 `num_cand=100` 후보 토큰을 선정(HotFlip, Ebrahimi et al. 방식).
+  2. 무작위로 고른 한 토큰 위치(`token_to_flip`)에 대해 `gradient_dot_embedding_matrix`로 상위 `num_cand=100` 후보 토큰을 선정(HotFlip, Ebrahimi et al. 방식). (참고: 논문 Table 5는 이를 치환 후보 풀 `m=500`과 서브샘플링 개수 `s=100` 두 값으로 표기 — 여기 적힌 `num_cand=100`은 논문 표가 아니라 실제 `algo/config.py` 코드값을 그대로 인용한 것.)
   3. 후보 각각으로 치환한 뒤 실제로 재임베딩해 objective를 재계산, 기존보다 개선되면 채택.
   4. 선택: `ppl_filter`(GPT-2 perplexity로 부자연스러운 토큰 배제), `target_gradient_guidance`(실제 target LLM의 target-word 확률/ASR로 후보 재선별).
   5. 기본 `num_iter=1000`, 트리거 길이 `num_adv_passage_tokens=10`.
@@ -34,6 +34,16 @@
 - 트리거 탐색 규모(공식: iterations=1000 × candidates=100 × gradient batch=30 vs. 이 저장소: iterations~8 × candidates<10, 무배치)가 수 자릿수 차이 나므로, 이 저장소의 ASR 수치를 논문 수치와 직접 비교할 수 없음.
 - 이 저장소는 논문이 사용한 실제 target LLM(Llama-2-7b-chat 등)이 아닌 로컬 `OLLAMA_MODEL`로 평가하므로, 절대적인 공격 성공률이 아니라 **이 lab 환경 안에서의 상대적 신호**로만 해석해야 함.
 - `AgentPoisonResponse.optimizer="embedding_discrete_beam_surrogate"`, `isolation="in_memory_no_database_writes"` 필드로 이 차이를 API 응답에도 명시함.
+
+## 알려진 평가 지표 차이 (2026-08-14 재검토)
+
+논문·공식 코드와 다시 대조하며 발견한, `ASR-r`/`benign_accuracy`/`ASR-t` 계산에 실질적으로 영향을 주는 차이들.
+
+- **ASR-r 판정 기준**: 논문 Appendix A.1.2는 "검색된 인스턴스 **전부**가 poison일 때만" 검색 성공(ASR-r)으로 인정한다고 명시함 — 에이전트 자체의 재랭킹/안전 필터가 일부만 poison인 결과를 걸러낼 수 있기 때문. 이 저장소도 `services/orchestrator/agent_poison.py`의 `retrieval_success()`가 top-k **전부** poison인 경우만 성공으로 판정하도록 구현되어 있다 (수정 전에는 top-k 중 하나라도 poison이면 성공으로 처리해 ASR-r이 논문 기준보다 관대하게 나오는 버그가 있었음 — `tests/test_agent_poison.py::test_retrieval_success_requires_every_topk_item_poisoned`로 회귀 방지).
+- **`benign_accuracy`는 논문의 ACC(정답률)와 다른 지표다**: 논문의 ACC는 정답(ground truth)과 비교한 정확도다. 이 저장소의 `AgentPoisonRequest`에는 애초에 정답 필드가 없어서, `benign_accuracy`는 "poison 주입 전/후로 같은 clean 질문에 대한 LLM 답변 문자열이 동일한가"(답변 안정성)만 측정한다. PoisonedRAG 패널의 `정상 정확도`(진짜 정답 대비 정확도)와 이름은 비슷해 보이지만 두 지표는 서로 다른 것을 재므로 직접 비교하면 안 된다. 또한 문자열 완전일치 기준이라 LLM이 같은 의미를 다른 표현으로 답하면 "안 보존됨"으로 과소평가될 수 있다.
+- **`ASR-t`는 사실상 텍스트 매칭이다**: 논문의 ASR-t는 시뮬레이션 환경(자율주행 궤적 이탈, EHR `DeleteDB` 등)에서 실제 피해가 발생했는지를 측정한다. 이 저장소는 그런 환경 시뮬레이션이 없어서 `ASR-t`는 검색 성공 여부와 무관하게 "최종 트리거 답변에 `target_action` 문구가 포함되는가"로 축소되어 있다. 원천적으로 이 lab 스코프에서는 고치기 어려운 한계.
+- **coordinate beam search는 `iterations`가 트리거 토큰 수 이상이어야 전체 위치를 다 훑는다**: `optimize_trigger`는 매 iteration마다 `iteration % len(seed_trigger.split())` 위치 하나만 치환한다. `iterations`가 트리거 단어 수보다 작으면 뒤쪽 단어 일부는 seed 그대로 남는다.
+- **`poison_count`가 `top_k`보다 작으면 ASR-r은 구조적으로 항상 0이다**: 위 ASR-r 수정(top-k 전부 poison이어야 성공) 때문에, poison 항목 수가 top_k보다 적으면 top-k를 poison으로 전부 채우는 것 자체가 불가능하다. 실험 설계 시 `poison_count >= top_k`로 맞춰야 ASR-r이 의미 있는 값을 낸다 (실측: poison_count=2/top_k=3 → asr_r=0.0, poison_count=3/top_k=3 → asr_r=1.0, 같은 코퍼스·트리거 조건).
 
 ## 참고
 
