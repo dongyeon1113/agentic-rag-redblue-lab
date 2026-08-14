@@ -18,6 +18,9 @@
     h1{font-size:17px;letter-spacing:-.02em;margin:0}.subtitle{font-size:11px;color:var(--muted);margin-top:3px}
     .corpus-status{margin-left:auto;padding:8px 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);font-size:11px;color:var(--muted)}
     .corpus-status strong{color:var(--text);font-size:13px;margin-right:8px}.corpus-status .poison-count{color:var(--red)}
+    .tabs{display:flex;gap:6px}
+    .tab{padding:9px 15px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:12px;font-weight:700}
+    .tab:hover{background:var(--panel3);color:var(--text)}.tab.active{background:var(--red);border-color:var(--red);color:#190609}
     .layout{display:grid;grid-template-columns:350px minmax(0,1fr);gap:16px;padding:16px 24px 48px;align-items:start}
     .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
     aside.card{position:sticky;top:79px}.card-head{padding:18px 20px;border-bottom:1px solid var(--line)}
@@ -85,11 +88,15 @@
 </head>
 <body>
   <header class="top"><div class="top-inner brand">
-    <div class="mark">P</div><div><h1>PoisonedRAG Reproduction Lab</h1>
-    <div class="subtitle">USENIX Security 2025 · Black-box construction P = Q + I</div></div>
+    <div class="mark" id="mark">P</div><div><h1 id="pageTitle">PoisonedRAG Reproduction Lab</h1>
+    <div class="subtitle" id="pageSubtitle">USENIX Security 2025 · Black-box construction P = Q + I</div></div>
+    <nav class="tabs" id="pageTabs">
+      <button class="tab active" data-page="pagePoisonedRAG" type="button">PoisonedRAG</button>
+      <button class="tab" data-page="pageAgentPoison" type="button">AgentPoison</button>
+    </nav>
     <div class="corpus-status" id="corpusStatus"><strong>데이터 확인 중</strong></div>
   </div></header>
-  <main class="layout">
+  <main class="layout" id="pagePoisonedRAG">
     <aside class="card">
       <div class="card-head"><h2>실험 설정</h2><p>다른 공격 방식 없이 PoisonedRAG만 재현합니다.</p></div>
       <form class="form" id="questionForm">
@@ -164,28 +171,37 @@
           <div><div class="legend"><span><i class="dot" style="background:var(--red)"></i>ASR</span><span><i class="dot" style="background:var(--blue)"></i>Retrieval F1</span></div><div class="downloads" id="downloads"></div></div>
         </div>
       </section>
-      <section class="card section" id="agentPoisonLab">
-        <div class="section-title"><h3>AgentPoison 격리 재현</h3><span class="status" id="apStatus">DB를 변경하지 않는 in-memory 실험</span></div>
-        <p class="paper"><b>공식 논문 (NeurIPS 2024)</b>white-box BERT gradient + HotFlip beam search · iterations=1000 · candidates m=500/s=100 · grad batch=30 · GPT-2 coherence 필터 · 실제 target LLM 기반 ASR 측정</p>
-        <p class="paper"><b>이 랩의 in-memory surrogate</b>gradient 없는 좌표별 완전탐색 beam search · black-box embedding API(uniqueness/compactness 목적함수 재현) · Chroma/local_db_agent 미변경 · 결과는 논문 수치와 직접 비교 불가</p>
-        <form class="form" id="agentPoisonForm">
-          <div class="field"><label for="apTrain">학습 질의 (한 줄에 하나)</label><textarea id="apTrain" rows="3">What is the capital of France?&#10;Who wrote Hamlet?&#10;What planet is known as the Red Planet?</textarea></div>
-          <div class="field"><label for="apTest">테스트 질의 (한 줄에 하나)</label><textarea id="apTest" rows="2">What is the capital of Germany?&#10;Who painted the Mona Lisa?</textarea></div>
-          <div class="field"><label for="apTarget">목표 행동/응답</label><input id="apTarget" value="I don't know"></div>
-          <div class="triple">
-            <div class="field"><label for="apCount">Poison 개수</label><input id="apCount" type="number" min="1" max="10" value="3"></div>
-            <div class="field"><label for="apTopk">Top-K</label><input id="apTopk" type="number" min="1" max="10" value="3"></div>
-            <div class="field"><label for="apIterations">최적화 iteration</label><input id="apIterations" type="number" min="1" max="50" value="8"></div>
-          </div>
+    </div>
+  </main>
+  <main class="layout" id="pageAgentPoison" style="display:none">
+    <aside class="card">
+      <div class="card-head"><h2>AgentPoison 실험 설정</h2><p>공식 AgentPoison의 uniqueness/compactness 목적함수를 in-memory surrogate로 재현합니다.</p></div>
+      <form class="form" id="agentPoisonForm">
+        <div class="field"><label for="apTrain">학습 질의 (한 줄에 하나)</label><textarea id="apTrain" rows="3">What is the capital of France?&#10;Who wrote Hamlet?&#10;What planet is known as the Red Planet?</textarea></div>
+        <div class="field"><label for="apTest">테스트 질의 (한 줄에 하나)</label><textarea id="apTest" rows="2">What is the capital of Germany?&#10;Who painted the Mona Lisa?</textarea></div>
+        <div class="field"><label for="apTarget">목표 행동/응답</label><input id="apTarget" value="I don't know"></div>
+        <div class="double">
+          <div class="field"><label for="apCount">Poison 개수</label><input id="apCount" type="number" min="1" max="10" value="3"></div>
+          <div class="field"><label for="apTopk">Top-K</label><input id="apTopk" type="number" min="1" max="10" value="3"></div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="apRunButton" type="submit">1회 실험</button>
+          <button class="secondary" id="apBenchmarkButton" type="button">Poison 개수별 반복 평가</button>
+        </div>
+        <details class="disclosure"><summary>세부 최적화 설정 및 설명</summary><div class="disclosure-body">
           <div class="double">
+            <div class="field"><label for="apIterations">최적화 iteration</label><input id="apIterations" type="number" min="1" max="50" value="8"></div>
             <div class="field"><label for="apCorpus">격리 corpus 크기</label><input id="apCorpus" type="number" min="10" max="1000" value="100"></div>
-            <div class="field"><label for="apRepetitions">조건별 반복 횟수</label><input id="apRepetitions" type="number" min="1" max="5" value="1"></div>
           </div>
-          <div class="actions">
-            <button class="primary" id="apRunButton" type="submit">1회 실험</button>
-            <button class="secondary" id="apBenchmarkButton" type="button">Poison 개수별 반복 평가</button>
-          </div>
-        </form>
+          <div class="field"><label for="apRepetitions">조건별 반복 횟수</label><input id="apRepetitions" type="number" min="1" max="5" value="1"></div>
+          <div class="paper"><b>공식 논문 (NeurIPS 2024)</b>white-box BERT gradient + HotFlip beam search · iterations=1000 · candidates m=500/s=100 · grad batch=30 · GPT-2 coherence 필터 · 실제 target LLM 기반 ASR 측정</div>
+          <div class="paper"><b>이 랩의 in-memory surrogate</b>gradient 없는 좌표별 완전탐색 beam search · black-box embedding API · Chroma/local_db_agent 미변경 · 결과는 논문 수치와 직접 비교 불가</div>
+        </div></details>
+      </form>
+    </aside>
+    <div class="workspace">
+      <section class="card section" id="agentPoisonLab">
+        <div class="section-title"><h3>AgentPoison 격리 재현 결과</h3><span class="status" id="apStatus">실험 대기 · DB를 변경하지 않는 in-memory 실험</span></div>
         <section class="metrics">
           <div class="metric"><span>ASR-r · 검색 성공</span><strong id="apAsrr">—</strong></div>
           <div class="metric"><span>ASR-a · 검색 성공 중 행동</span><strong id="apAsra">—</strong></div>
@@ -215,6 +231,20 @@
   </main>
 <script>
   const $ = id => document.getElementById(id);
+  const PAGES = {
+    pagePoisonedRAG:{title:"PoisonedRAG Reproduction Lab",subtitle:"USENIX Security 2025 · Black-box construction P = Q + I",mark:"P"},
+    pageAgentPoison:{title:"AgentPoison Reproduction Lab",subtitle:"NeurIPS 2024 · Embedding uniqueness/compactness surrogate",mark:"A"}
+  };
+  function showPage(id){
+    Object.keys(PAGES).forEach(p=>$(p).style.display = p===id ? "" : "none");
+    document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.page===id));
+    const meta=PAGES[id];
+    $("mark").textContent=meta.mark; $("pageTitle").textContent=meta.title; $("pageSubtitle").textContent=meta.subtitle;
+    $("corpusStatus").style.display = id==="pagePoisonedRAG" ? "" : "none";
+    document.title = meta.title;
+  }
+  document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.page)));
+  showPage("pagePoisonedRAG");
   let corpusCounts = null;
   let presets = {
     fallback:["how many episodes are in chicago fire season 4","23","24"]
