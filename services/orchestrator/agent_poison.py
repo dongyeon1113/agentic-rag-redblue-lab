@@ -31,6 +31,26 @@ class TriggerScore:
     compactness: float
 
 
+def _score_against_center(
+    embedding: Embeddings,
+    *,
+    queries: list[str],
+    trigger: str,
+    benign_center: list[float],
+    compactness_weight: float,
+) -> TriggerScore:
+    triggered = embedding.embed_documents([f"{query} {trigger}" for query in queries])
+    triggered_center = _mean(triggered)
+    uniqueness = sum(_distance(vector, benign_center) for vector in triggered) / len(triggered)
+    compactness = sum(_distance(vector, triggered_center) for vector in triggered) / len(triggered)
+    return TriggerScore(
+        trigger=trigger,
+        objective=round(uniqueness - compactness_weight * compactness, 8),
+        uniqueness=round(uniqueness, 8),
+        compactness=round(compactness, 8),
+    )
+
+
 def score_trigger(
     embedding: Embeddings,
     *,
@@ -42,17 +62,13 @@ def score_trigger(
     """Paper Eq. 7/8 surrogate: maximize uniqueness, minimize compactness."""
     if not queries or not benign_texts:
         raise ValueError("queries and benign_texts must not be empty")
-    triggered = embedding.embed_documents([f"{query} {trigger}" for query in queries])
-    benign = embedding.embed_documents(benign_texts)
-    benign_center = _mean(benign)
-    triggered_center = _mean(triggered)
-    uniqueness = sum(_distance(vector, benign_center) for vector in triggered) / len(triggered)
-    compactness = sum(_distance(vector, triggered_center) for vector in triggered) / len(triggered)
-    return TriggerScore(
+    benign_center = _mean(embedding.embed_documents(benign_texts))
+    return _score_against_center(
+        embedding,
+        queries=queries,
         trigger=trigger,
-        objective=round(uniqueness - compactness_weight * compactness, 8),
-        uniqueness=round(uniqueness, 8),
-        compactness=round(compactness, 8),
+        benign_center=benign_center,
+        compactness_weight=compactness_weight,
     )
 
 
@@ -73,6 +89,13 @@ def optimize_trigger(
     candidates = list(dict.fromkeys(token.strip() for token in candidate_tokens if token.strip()))
     if not candidates:
         raise ValueError("candidate_tokens must not be empty")
+    if not queries or not benign_texts:
+        raise ValueError("queries and benign_texts must not be empty")
+    # Embed the benign corpus once: it never changes across the search, so
+    # re-embedding it per candidate (as score_trigger does standalone) would
+    # be O(iterations * proposals_per_iteration * len(benign_texts)) instead
+    # of O(len(benign_texts)).
+    benign_center = _mean(embedding.embed_documents(benign_texts))
     beams = [seed]
     history: list[TriggerScore] = []
     for iteration in range(iterations):
@@ -84,11 +107,12 @@ def optimize_trigger(
                 changed[position] = token
                 proposals.add(tuple(changed))
         scored = [
-            score_trigger(
+            _score_against_center(
                 embedding,
                 queries=queries,
-                benign_texts=benign_texts,
                 trigger=" ".join(proposal),
+                benign_center=benign_center,
+                compactness_weight=0.1,
             )
             for proposal in proposals
         ]
