@@ -106,7 +106,11 @@ git status --short --branch
      ASR 측정(iterations=1000, candidates=100, grad batch=30)인 반면, 이 저장소는 black-box embedding
      인터페이스 + 좌표별 완전탐색 beam search + 단일 benign centroid 기반 objective(iterations~8, 후보 <10개).
      ASR 수치는 논문 수치와 직접 비교 불가.
-6. 검증 결과를 사용자에게 먼저 보고한 뒤에만 커밋/원격 반영을 논의한다. (진행 중 — 이 세션에서 보고함, 커밋/원격 반영은 아직 미논의)
+6. ~~검증 결과를 사용자에게 먼저 보고한 뒤에만 커밋/원격 반영을 논의한다.~~
+   - 완료: PR #3(백엔드+GUI), #4(`/demo` PoisonedRAG/AgentPoison 탭 분리), #5(ASR-r 논문 프로토콜 정합성 수정,
+     top-k 전부 poison이어야 성공으로 처리하도록 변경 — 이전엔 하나만 poison이어도 성공 처리하던 버그) 모두 `main`에 머지 완료.
+     로컬 `main`도 `origin/main`과 동기화됨. 남은 코드 작업 없음 — 이제 사용자가 GUI로 직접 AgentPoison 실험을 돌리고,
+     그 결과를 PPT(`PoisonedRAG.pptx`)에 반영하는 단계.
 
 ## 공식 참고자료
 
