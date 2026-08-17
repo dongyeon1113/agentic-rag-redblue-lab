@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _store(**kwargs) -> ChromaDocumentStore:
+    kwargs.setdefault("ragpart", RagPartConfig(enabled=True))
     return ChromaDocumentStore(
         PROJECT_ROOT / "datasets/sample/nq_sample.json",
         collection_name=f"ragpart-test-{uuid4().hex[:8]}",
@@ -129,7 +130,9 @@ def test_ragpart_index_follows_document_deletion() -> None:
 
 
 def test_ragpart_config_is_respected() -> None:
-    store = _store(ragpart=RagPartConfig(fragments=3, combination_size=2))
+    store = _store(
+        ragpart=RagPartConfig(fragments=3, combination_size=2, enabled=True)
+    )
 
     hits = store.search_ragpart(QUERY, 3)
 
@@ -137,7 +140,8 @@ def test_ragpart_config_is_respected() -> None:
     assert store._ragpart_store._collection.count() == 3 * 3  # C(3,2) per doc
 
 
-def test_search_endpoint_accepts_the_defense_parameter() -> None:
+def test_search_endpoint_reports_a_missing_ragpart_index() -> None:
+    """The agent ships with RAGPart indexing off, so the guard must be clear."""
     client = TestClient(local_db_app)
     payload = {"query": QUERY, "limit": 3}
 
@@ -145,9 +149,20 @@ def test_search_endpoint_accepts_the_defense_parameter() -> None:
     defended = client.post("/search", json={**payload, "defense": "ragpart"})
 
     assert baseline.status_code == 200
+    assert defended.status_code == 501
+    assert "RAGPART_ENABLED" in defended.json()["detail"]
+
+
+def test_search_endpoint_serves_ragpart_when_the_index_exists(monkeypatch) -> None:
+    monkeypatch.setattr(local_db_app.state, "document_store", _store())
+    client = TestClient(local_db_app)
+
+    defended = client.post(
+        "/search",
+        json={"query": QUERY, "limit": 3, "defense": "ragpart"},
+    )
+
     assert defended.status_code == 200
-    # The module-level agent store is shared across tests, so only assert that
-    # the defended path runs and returns the requested number of hits.
     assert len(defended.json()["hits"]) == 3
 
 

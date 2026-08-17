@@ -55,15 +55,24 @@ def create_search_agent(
 
     @app.post("/search", response_model=SearchResponse)
     async def search(request: SearchRequest) -> SearchResponse:
+        # Read through app.state so the store can be swapped at runtime, the
+        # same way this agent's other endpoints reach it.
+        active_store = app.state.document_store
         if request.defense == "ragpart":
-            if not isinstance(store, ChromaDocumentStore):
+            if not isinstance(active_store, ChromaDocumentStore):
                 raise HTTPException(
                     status_code=status.HTTP_501_NOT_IMPLEMENTED,
                     detail="RAGPart requires the Chroma backend.",
                 )
-            hits = store.search_ragpart(request.query, request.limit)
+            try:
+                hits = active_store.search_ragpart(request.query, request.limit)
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                    detail=str(exc),
+                ) from exc
         else:
-            hits = store.search(request.query, request.limit)
+            hits = active_store.search(request.query, request.limit)
         return SearchResponse(
             service=service_name,
             query=request.query,
