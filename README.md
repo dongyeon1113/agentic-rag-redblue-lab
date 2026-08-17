@@ -246,12 +246,31 @@ top-k) and `retrieval_success_rate` (a golden passage reached top-k). These are
 separate from the existing answer-stage `attack_success_rate`.
 
 `N` and `k` come from `RAGPART_FRAGMENTS` and `RAGPART_COMBINATION_SIZE`
-(paper defaults 5 and 3).
+(paper defaults 5 and 3). Building the side index costs `N` embedding calls
+per document, so it is opt-in: set `RAGPART_ENABLED=true` on the search agent
+and reindex. Requesting the defense without an index returns 501.
 
-**Current result: RAGPart does not reduce attack success in this lab yet.** The
-defense relies on dense retrievers' inductive bias, and the offline
-`DeterministicHashEmbeddings` baseline does not have it. Measurements and the
-required retriever swap are in
+**Measured result.** On the NQ corpus with the `nomic-embed-text` retriever,
+RAGPart restores utility that a query-as-poison attack removes. At top-k=3 the
+undefended retriever returns three poisons and no golden passage; RAGPart
+recovers the golden passage and pushes poison-in-top-k down by 40%.
+
+| top-k | defense | ASR | SR | poison@k | gold rank |
+| --- | --- | --- | --- | --- | --- |
+| 3 | none | 1.00 | 0.00 | 3.00 | not retrieved |
+| 3 | ragpart | 1.00 | 1.00 | 1.80 | 2.4 |
+| 5 | none | 1.00 | 1.00 | 3.00 | 4.0 |
+| 5 | ragpart | 1.00 | 1.00 | 3.00 | 1.0 |
+
+Reproduce with:
+
+```bash
+EMBEDDING_BACKEND=ollama PYTHONPATH=. .venv/bin/python scripts/measure_ragpart.py
+```
+
+The defense depends on the retriever. Run the same script with
+`EMBEDDING_BACKEND=hash` and the effect disappears, because the offline hash
+embedding has no inductive bias for fragments to inherit. Details in
 [`docs/ragpart-ragmask.ko.md`](docs/ragpart-ragmask.ko.md).
 
 Remove all `untrusted` experiment documents while preserving the original

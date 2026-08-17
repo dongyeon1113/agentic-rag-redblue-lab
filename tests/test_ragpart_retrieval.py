@@ -52,14 +52,17 @@ def _poison(
     return ids
 
 
-def test_ragpart_does_not_demote_a_realistic_query_as_poison() -> None:
-    """Negative result on this lab's hash embedding -- see the plan doc.
+def test_hash_embedding_gives_ragpart_no_ranking_advantage() -> None:
+    """Why RAGPart needs a dense retriever, pinned as a test.
 
-    RAGPart's leverage is combination coverage, and a realistic PoisonedRAG
-    instruction repeats the query terms it is built around ("capital",
-    "France"). Those terms therefore land in two of five fragments, giving
-    the poison the same 9/10 coverage as the golden passage. The defense only
-    helps when the query terms stay localised in one fragment.
+    These tests run on DeterministicHashEmbeddings, where fragment embeddings
+    do not preserve document meaning (cos 0.468 vs 0.772 for nomic). Mean
+    pooling therefore fails to dilute the poison, and a realistic PoisonedRAG
+    instruction repeats its query terms across fragments anyway, so RAGPart
+    gains no ranking advantage here.
+
+    With the dense retriever the lab actually ships, the same measurement
+    flips: see docs/ragpart-ragmask.ko.md and scripts/measure_ragpart.py.
     """
     store = _store()
     poison_ids = _poison(store, 3)
@@ -96,7 +99,7 @@ def test_a_localised_poison_fails_without_any_defense() -> None:
     assert "nq-sample-001" in defended
 
 
-def test_retrieval_stage_metrics_track_the_negative_result() -> None:
+def test_retrieval_stage_metrics_under_the_hash_embedding() -> None:
     store = _store()
     poison_ids = _poison(store, 3)
 
@@ -110,9 +113,10 @@ def test_retrieval_stage_metrics_track_the_negative_result() -> None:
     baseline_asr, baseline_sr = metrics(store.search(QUERY, 3))
     defended_asr, defended_sr = metrics(store.search_ragpart(QUERY, 3))
 
-    # Only three clean documents exist, so a poison always reaches top-k and
-    # paper-style ASR cannot fall. Against the realistic poison RAGPart does
-    # not recover utility either.
+    # Only three clean fixture documents exist, so a poison always reaches
+    # top-k and paper-style ASR cannot fall. Under the hash embedding RAGPart
+    # does not recover utility either; scripts/measure_ragpart.py shows SR
+    # going 0.00 -> 1.00 on the real corpus with nomic.
     assert baseline_asr == 1.0 and defended_asr == 1.0
     assert baseline_sr == 0.0 and defended_sr == 0.0
 
