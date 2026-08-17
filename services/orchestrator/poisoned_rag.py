@@ -30,6 +30,39 @@ class GeneratedPoison:
     word_count: int
 
 
+def token_jaccard(left: str, right: str) -> float:
+    left_tokens = set(left.casefold().split())
+    right_tokens = set(right.casefold().split())
+    union = left_tokens | right_tokens
+    return len(left_tokens & right_tokens) / len(union) if union else 1.0
+
+
+def select_diverse_candidates(
+    candidates: list[tuple[int, GeneratedPoison, float]],
+    *,
+    count: int,
+    duplicate_threshold: float = 0.85,
+) -> tuple[list[int], dict[int, str]]:
+    """Select verified, retrievable candidates while rejecting near duplicates."""
+    ranked = sorted(candidates, key=lambda item: (-item[2], item[0]))
+    selected: list[int] = []
+    selected_texts: list[str] = []
+    rejected: dict[int, str] = {}
+    for index, candidate, _score in ranked:
+        if not candidate.verified:
+            rejected[index] = "verification_failed"
+            continue
+        if any(token_jaccard(candidate.poison_text, text) >= duplicate_threshold for text in selected_texts):
+            rejected[index] = "near_duplicate"
+            continue
+        if len(selected) >= count:
+            rejected[index] = "lower_retrieval_score"
+            continue
+        selected.append(index)
+        selected_texts.append(candidate.poison_text)
+    return selected, rejected
+
+
 def build_instruction_prompt(
     *,
     query: str,

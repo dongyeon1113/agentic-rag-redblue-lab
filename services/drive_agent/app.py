@@ -7,7 +7,13 @@ from services.drive_agent.google_drive import sync_google_drive_folder
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_FILE = PROJECT_ROOT / "datasets/sample/drive_dummy.json"
 
-if os.getenv("DRIVE_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}:
+DRIVE_SYNC_ENABLED = os.getenv("DRIVE_SYNC_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+if DRIVE_SYNC_ENABLED:
     data_file = Path(
         os.getenv("DATA_FILE", "/app/data/google_drive_documents.json")
     )
@@ -27,3 +33,12 @@ app = create_search_agent(
     default_data_file=DEFAULT_DATA_FILE,
     default_search_backend="chroma",
 )
+
+
+@app.get("/source-status")
+async def source_status() -> dict[str, str | bool]:
+    return {
+        "source": "drive",
+        "mode": "live" if DRIVE_SYNC_ENABLED else "sample",
+        "connected": DRIVE_SYNC_ENABLED,
+    }

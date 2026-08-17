@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -35,15 +36,40 @@ class ChromaDocumentStore:
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
         if self.sync_data_file:
-            existing_ids = [
-                str(item)
-                for item in self.vector_store.get(include=[]).get("ids", [])
+            synchronized_ids = self.vector_store.get(include=[]).get("ids", [])
+            if synchronized_ids:
+                self.vector_store.delete(ids=[str(item) for item in synchronized_ids])
+        existing_ids_list: list[str] = []
+        existing_metadatas: list[dict[str, object] | None] = []
+        page_size = 5_000
+        for offset in range(0, self.count(), page_size):
+            page = self.vector_store.get(
+                include=["metadatas"], limit=page_size, offset=offset
+            )
+            existing_ids_list.extend(str(item) for item in page.get("ids", []))
+            existing_metadatas.extend(page.get("metadatas", []))
+        existing_ids = set(existing_ids_list)
+        sync_trusted = os.getenv("CHROMA_SYNC_TRUSTED_CORPUS", "false").lower() in {
+            "1", "true", "yes"
+        }
+        if sync_trusted:
+            desired_ids = {str(record["id"]) for record in records}
+            stale_trusted_ids = [
+                str(document_id)
+                for document_id, metadata in zip(
+                    existing_ids_list,
+                    existing_metadatas,
+                )
+                if (metadata or {}).get("trust") == "trusted"
+                and str(document_id) not in desired_ids
             ]
-            if existing_ids:
-                self.vector_store.delete(ids=existing_ids)
+            if stale_trusted_ids:
+                self.vector_store.delete(ids=stale_trusted_ids)
+                existing_ids.difference_update(stale_trusted_ids)
 
-        if not records:
-            return
+        pending_records = [
+            record for record in records if str(record["id"]) not in existing_ids
+        ]
 
         documents = [
             Document(
@@ -55,12 +81,15 @@ class ChromaDocumentStore:
                     "tags": json.dumps(record.get("tags", [])),
                 },
             )
-            for record in records
+            for record in pending_records
         ]
-        self.vector_store.add_documents(
-            documents=documents,
-            ids=[record["id"] for record in records],
-        )
+        batch_size = max(1, int(os.getenv("CHROMA_INDEX_BATCH_SIZE", "1000")))
+        for start in range(0, len(pending_records), batch_size):
+            end = start + batch_size
+            self.vector_store.add_documents(
+                documents=documents[start:end],
+                ids=[record["id"] for record in pending_records[start:end]],
+            )
 
     def search(self, query: str, limit: int) -> list[SearchHit]:
         results = self.vector_store.similarity_search_with_score(query, k=limit)
@@ -113,6 +142,16 @@ class ChromaDocumentStore:
 
     def count(self) -> int:
         return self.vector_store._collection.count()
+
+    def document_counts(self) -> dict[str, int]:
+        untrusted = self.vector_store.get(where={"trust": "untrusted"}, include=[])
+        untrusted_count = len(untrusted.get("ids", []))
+        total_count = self.count()
+        return {
+            "trusted": total_count - untrusted_count,
+            "untrusted": untrusted_count,
+            "total": total_count,
+        }
 
     def delete_untrusted_documents(self) -> int:
         records = self.vector_store.get(

@@ -21,6 +21,19 @@ app = create_search_agent(
 )
 
 
+@app.get("/stats")
+async def document_stats() -> dict[str, object]:
+    store = app.state.document_store
+    counts = store.document_counts() if isinstance(store, ChromaDocumentStore) else {
+        "trusted": store.count(), "untrusted": 0, "total": store.count()
+    }
+    return {
+        "dataset": store.data_file.stem,
+        "backend": app.state.search_backend,
+        "counts": counts,
+    }
+
+
 @app.post(
     "/documents",
     response_model=ExperimentDocumentResponse,

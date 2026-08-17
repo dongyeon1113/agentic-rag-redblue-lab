@@ -7,7 +7,13 @@ from services.gmail_agent.google_gmail import sync_gmail_messages
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_FILE = PROJECT_ROOT / "datasets/sample/gmail_dummy.json"
 
-if os.getenv("GMAIL_SYNC_ENABLED", "false").lower() in {"1", "true", "yes"}:
+GMAIL_SYNC_ENABLED = os.getenv("GMAIL_SYNC_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+if GMAIL_SYNC_ENABLED:
     data_file = Path(
         os.getenv("DATA_FILE", "/app/data/google_gmail_messages.json")
     )
@@ -28,3 +34,12 @@ app = create_search_agent(
     default_data_file=DEFAULT_DATA_FILE,
     default_search_backend="chroma",
 )
+
+
+@app.get("/source-status")
+async def source_status() -> dict[str, str | bool]:
+    return {
+        "source": "gmail",
+        "mode": "live" if GMAIL_SYNC_ENABLED else "sample",
+        "connected": GMAIL_SYNC_ENABLED,
+    }

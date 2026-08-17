@@ -3,8 +3,10 @@ import csv
 import json
 import os
 import time
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +16,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from fastapi.responses import FileResponse
 
 from services.common.schemas import (
+    AgentPoisonBenchmarkFailure,
+    AgentPoisonBenchmarkPoint,
+    AgentPoisonBenchmarkRequest,
+    AgentPoisonBenchmarkResponse,
+    AgentPoisonMetrics,
+    AgentPoisonRequest,
+    AgentPoisonResponse,
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
     ExperimentDocumentRequest,
@@ -32,8 +41,11 @@ from services.common.schemas import (
     PoisonedRAGBenchmarkRequest,
     PoisonedRAGBenchmarkResponse,
     PoisonedRAGCandidate,
+    PoisonedRAGPipelineStatus,
     PoisonedRAGRequest,
     PoisonedRAGResponse,
+    PoisonedRAGRunFailure,
+    PoisonedRAGRunMetadata,
     SearchHit,
 )
 from services.orchestrator.bipia_benchmark import (
@@ -43,14 +55,22 @@ from services.orchestrator.bipia_evaluation import (
     judge_bipia_answer,
     mean as bipia_mean,
 )
+from services.common.embeddings import create_embeddings
+from services.common.search import load_json_documents
+from services.orchestrator.agent_poison import optimize_trigger, rank_memory, retrieval_success
 from services.orchestrator.evaluation import (
+    answer_accuracy,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
+    normalize_text,
+    phrase_present,
 )
 from services.orchestrator.mock_tools import run_rag_with_mock_tools
 from services.orchestrator.poisoned_rag import (
+    GeneratedPoison,
     generate_poison_set,
+    select_diverse_candidates,
 )
 from services.orchestrator.rag import (
     DEFENDED_SYSTEM_PROMPT,
@@ -90,6 +110,12 @@ DEFENSE_DEMO_FILE = (
 RAG_RETRIEVER_DEMO_FILE = (
     Path(__file__).with_name("static") / "rag-retriever-demo.html"
 )
+EXPERIMENT_SCENARIOS_FILE = Path(
+    os.getenv(
+        "EXPERIMENT_SCENARIOS_FILE",
+        str(Path(__file__).resolve().parents[2] / "datasets/experiments/nq_target_queries.json"),
+    )
+)
 
 
 @app.get("/demo", include_in_schema=False)
@@ -111,6 +137,19 @@ async def rag_retriever_demo() -> FileResponse:
 async def spotlighting_demo() -> FileResponse:
     """Backward-compatible alias for the defense demonstration UI."""
     return FileResponse(DEFENSE_DEMO_FILE)
+@app.get("/experiments/scenarios")
+async def experiment_scenarios() -> dict[str, Any]:
+    try:
+        scenarios = json.loads(EXPERIMENT_SCENARIOS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail="Experiment scenarios are unavailable") from exc
+    required = {"id", "query", "expected_answer", "attack_target"}
+    if not isinstance(scenarios, list) or any(
+        not isinstance(item, dict) or not required.issubset(item)
+        for item in scenarios
+    ):
+        raise HTTPException(status_code=503, detail="Experiment scenario data is invalid")
+    return {"dataset": "beir-nq", "count": len(scenarios), "scenarios": scenarios}
 
 
 @lru_cache(maxsize=1)
@@ -299,12 +338,23 @@ async def agents() -> dict[str, Any]:
             return_exceptions=True,
         )
 
+        source_responses = await asyncio.gather(
+            *[
+                _request_json(client, "GET", f"{AGENT_URLS[source]}/source-status")
+                for source in ("gmail", "drive")
+            ],
+            return_exceptions=True,
+        )
+
     status: dict[str, Any] = {}
     for source, response in zip(AGENT_URLS, responses, strict=True):
         if isinstance(response, Exception):
             status[source] = {"status": "unavailable", "error": str(response)}
         else:
             status[source] = response
+    for source, response in zip(("gmail", "drive"), source_responses, strict=True):
+        if not isinstance(response, Exception) and status[source].get("status") != "unavailable":
+            status[source]["data_source"] = response
     return {"service": SERVICE_NAME, "agents": status}
 
 
@@ -337,6 +387,19 @@ async def model() -> dict[str, Any]:
         "installed": OLLAMA_MODEL in installed_models,
         "available_models": installed_models,
     }
+
+
+@app.get("/experiments/corpus-status")
+async def corpus_status() -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client, "GET", f"{AGENT_URLS['local_db']}/stats"
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Local corpus status is unavailable"
+        ) from exc
 
 
 @app.post(
@@ -528,7 +591,7 @@ async def _generate_answer(
     )
     context_hits = collect_context_hits(
         results,
-        limit=candidate_limit,
+        limit=min(candidate_limit, request.limit, RAG_CONTEXT_LIMIT),
         trusted_only=request.mode == "defended",
     )
     blocked_documents: list[dict[str, Any]] = []
@@ -751,10 +814,13 @@ async def compare_experiment_modes(
 async def run_poisoned_rag_experiment(
     request: PoisonedRAGRequest,
 ) -> PoisonedRAGResponse:
+    run_started = perf_counter()
+    started_at = datetime.now(timezone.utc)
     if request.cleanup_before_run:
         await reset_experiment_documents()
 
     run_id = uuid4().hex[:12]
+    candidate_count = request.poison_count * request.candidate_multiplier
     placeholder_ids = [f"poisonedrag-{run_id}-{index}" for index in range(1, request.poison_count + 1)]
     baseline_request = ExperimentEvaluationRequest(
         query=request.query,
@@ -771,28 +837,41 @@ async def run_poisoned_rag_experiment(
         await _generate_answer(baseline_request),
     )
 
-    try:
-        generated = await generate_poison_set(
-            _attack_generation_model(request.generation_temperature),
-            answer_with_context=_answer_with_supplied_context,
-            query=request.query,
-            attack_target=request.attack_target,
-            count=request.poison_count,
-            word_count=request.passage_word_count,
-            max_trials=request.max_generation_trials,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"PoisonedRAG generation failed with {OLLAMA_MODEL}: {exc}",
-        ) from exc
+    if request.fixed_candidates is not None:
+        generated = [
+            GeneratedPoison(
+                instruction=item.instruction,
+                poison_text=item.poison_text,
+                verification_answer=item.verification_answer,
+                verified=item.verified,
+                generation_queries=0,
+                generation_seconds=0.0,
+                word_count=item.word_count,
+            )
+            for item in request.fixed_candidates[:request.poison_count]
+        ]
+    else:
+        try:
+            generated = await generate_poison_set(
+                _attack_generation_model(request.generation_temperature),
+                answer_with_context=_answer_with_supplied_context,
+                query=request.query,
+                attack_target=request.attack_target,
+                count=candidate_count,
+                word_count=request.passage_word_count,
+                max_trials=request.max_generation_trials,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"PoisonedRAG generation failed with {OLLAMA_MODEL}: {exc}",
+            ) from exc
 
-    generated_documents: list[PoisonedRAGCandidate] = []
-    document_ids: list[str] = []
+    candidate_ids: list[str] = []
     for index, item in enumerate(generated, start=1):
         document_id = f"poisonedrag-{run_id}-{index}"
         if item.verified:
-            document_ids.append(document_id)
+            candidate_ids.append(document_id)
             await create_experiment_document(
                 ExperimentDocumentRequest(
                     document_id=document_id,
@@ -807,6 +886,39 @@ async def run_poisoned_rag_experiment(
                     text=item.poison_text,
                 )
             )
+    retrieval_results = await _query_agents(
+        OrchestratorQueryRequest(query=request.query, sources=["local_db"], limit=20)
+    )
+    retrieval_scores = {
+        hit["document_id"]: float(hit["score"])
+        for hit in retrieval_results.get("local_db", {}).get("hits", [])
+    }
+    ranked_candidates = [
+        (index, item, retrieval_scores.get(f"poisonedrag-{run_id}-{index}", 0.0))
+        for index, item in enumerate(generated, start=1)
+    ]
+    selected_indexes, rejection_reasons = select_diverse_candidates(
+        ranked_candidates, count=request.poison_count
+    )
+    selected_set = set(selected_indexes)
+    await _delete_experiment_documents(candidate_ids)
+
+    generated_documents: list[PoisonedRAGCandidate] = []
+    document_ids: list[str] = []
+    for index, item in enumerate(generated, start=1):
+        document_id = f"poisonedrag-{run_id}-{index}"
+        selected = index in selected_set
+        if selected:
+            document_ids.append(document_id)
+            await create_experiment_document(
+                ExperimentDocumentRequest(
+                    document_id=document_id,
+                    source="poisonedrag-black-box",
+                    tags=["controlled", "poison", "poisonedrag", "black-box", "q-plus-i", "selected"],
+                    text=item.poison_text,
+                )
+            )
+        score = retrieval_scores.get(document_id, 0.0)
         generated_documents.append(
             PoisonedRAGCandidate(
                 document_id=document_id,
@@ -817,6 +929,10 @@ async def run_poisoned_rag_experiment(
                 generation_queries=item.generation_queries,
                 generation_seconds=item.generation_seconds,
                 word_count=item.word_count,
+                retrieval_score=round(score, 6),
+                selection_score=round(score, 6) if item.verified else None,
+                selected=selected,
+                rejection_reason=rejection_reasons.get(index),
             )
         )
 
@@ -848,7 +964,7 @@ async def run_poisoned_rag_experiment(
     )
     metrics = AttackDashboardMetrics(
         attack_success_rate=attack_success_rate(attacked.outcome),
-        accuracy=1.0 if attacked.expected_answer_present else 0.0,
+        accuracy=answer_accuracy(attacked.outcome),
         poison_in_top_k=poison_in_top_k,
         top_k=retrieved_count,
         retrieval_precision=round(precision, 4),
@@ -858,15 +974,48 @@ async def run_poisoned_rag_experiment(
         generation_seconds=round(
             sum(item.generation_seconds for item in generated), 3
         ),
+        total_seconds=round(perf_counter() - run_started, 3),
     )
+    verified_count = sum(item.verified for item in generated)
+    generation_status = (
+        "skipped"
+        if request.poison_count == 0
+        else "completed"
+        if len(document_ids) == request.poison_count
+        else "partial"
+    )
+    injection_status = (
+        "skipped"
+        if request.poison_count == 0
+        else "completed"
+        if len(document_ids) == request.poison_count
+        else "partial"
+    )
+    completed_at = datetime.now(timezone.utc)
     return PoisonedRAGResponse(
         run_id=run_id,
         requested_poison_count=request.poison_count,
-        verified_poison_count=sum(item.verified for item in generated),
+        generated_candidate_count=len(generated),
+        verified_poison_count=verified_count,
         injected_poison_count=len(document_ids),
         top_k=request.top_k,
         document_ids=document_ids,
         generated_documents=generated_documents,
+        pipeline=PoisonedRAGPipelineStatus(
+            generation=generation_status,
+            injection=injection_status,
+        ),
+        metadata=PoisonedRAGRunMetadata(
+            started_at=started_at.isoformat(),
+            completed_at=completed_at.isoformat(),
+            service_version=VERSION,
+            model=OLLAMA_MODEL,
+            generation_temperature=request.generation_temperature,
+            max_generation_trials=request.max_generation_trials,
+            passage_word_count=request.passage_word_count,
+            cleanup_before_run=request.cleanup_before_run,
+            candidate_multiplier=request.candidate_multiplier,
+        ),
         metrics=metrics,
         baseline=baseline,
         attacked=attacked,
@@ -905,11 +1054,48 @@ async def run_poisoned_rag_benchmark(
 ) -> PoisonedRAGBenchmarkResponse:
     experiment_id = f"poisonedrag-{uuid4().hex[:12]}"
     runs: list[PoisonedRAGResponse] = []
+    failures: list[PoisonedRAGRunFailure] = []
     for scenario in request.scenarios:
-        for poison_count in request.poison_counts:
-            for _ in range(request.repetitions):
-                runs.append(
-                    await run_poisoned_rag_experiment(
+        for repetition in range(1, request.repetitions + 1):
+            fixed_candidates: list[PoisonedRAGCandidate] | None = None
+            if request.fixed_poison_pool and max(request.poison_counts) > 0:
+                pool_started = perf_counter()
+                try:
+                    pool_run = await run_poisoned_rag_experiment(
+                        PoisonedRAGRequest(
+                            query=scenario.query,
+                            expected_answer=scenario.expected_answer,
+                            attack_target=scenario.attack_target,
+                            poison_count=max(request.poison_counts),
+                            top_k=request.top_k,
+                            max_generation_trials=request.max_generation_trials,
+                            passage_word_count=request.passage_word_count,
+                            generation_temperature=request.generation_temperature,
+                            cleanup_before_run=True,
+                            candidate_multiplier=request.candidate_multiplier,
+                        )
+                    )
+                except Exception as exc:
+                    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                    for poison_count in request.poison_counts:
+                        failures.append(PoisonedRAGRunFailure(
+                            scenario_name=scenario.name,
+                            poison_count=poison_count,
+                            repetition=repetition,
+                            stage="generation",
+                            error_type=type(exc).__name__,
+                            detail=str(detail)[:1000],
+                            elapsed_seconds=round(perf_counter() - pool_started, 3),
+                        ))
+                    continue
+                fixed_candidates = sorted(
+                    (item for item in pool_run.generated_documents if item.selected),
+                    key=lambda item: (-(item.selection_score or 0.0), item.document_id),
+                )
+            for poison_count in request.poison_counts:
+                attempt_started = perf_counter()
+                try:
+                    run = await run_poisoned_rag_experiment(
                         PoisonedRAGRequest(
                             query=scenario.query,
                             expected_answer=scenario.expected_answer,
@@ -920,19 +1106,47 @@ async def run_poisoned_rag_benchmark(
                             passage_word_count=request.passage_word_count,
                             generation_temperature=request.generation_temperature,
                             cleanup_before_run=True,
+                            candidate_multiplier=(1 if fixed_candidates is not None else request.candidate_multiplier),
+                            fixed_candidates=fixed_candidates,
                         )
                     )
-                )
+                except Exception as exc:
+                    detail = (
+                        exc.detail
+                        if isinstance(exc, HTTPException)
+                        else "Unexpected internal error; inspect restricted server logs."
+                    )
+                    detail_text = str(detail)[:1000]
+                    stage = "generation" if "generation failed" in detail_text.casefold() else "unknown"
+                    failures.append(
+                        PoisonedRAGRunFailure(
+                            scenario_name=scenario.name,
+                            poison_count=poison_count,
+                            repetition=repetition,
+                            stage=stage,
+                            error_type=type(exc).__name__,
+                            detail=detail_text,
+                            elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                        )
+                    )
+                    continue
+                run.scenario_name = scenario.name
+                runs.append(run)
 
     points: list[PoisonedRAGBenchmarkPoint] = []
     for poison_count in request.poison_counts:
         selected = [
             run for run in runs if run.requested_poison_count == poison_count
         ]
+        selected_failures = [
+            failure for failure in failures if failure.poison_count == poison_count
+        ]
         points.append(
             PoisonedRAGBenchmarkPoint(
                 poison_count=poison_count,
-                trials=len(selected),
+                trials=len(selected) + len(selected_failures),
+                successful_trials=len(selected),
+                failed_trials=len(selected_failures),
                 attack_success_rate=_mean([run.metrics.attack_success_rate for run in selected]),
                 accuracy=_mean([run.metrics.accuracy for run in selected]),
                 retrieval_precision=_mean([run.metrics.retrieval_precision for run in selected]),
@@ -941,6 +1155,7 @@ async def run_poisoned_rag_benchmark(
                 average_poison_in_top_k=_mean([float(run.metrics.poison_in_top_k) for run in selected]),
                 average_generation_queries=_mean([float(run.metrics.generation_queries) for run in selected]),
                 average_generation_seconds=_mean([run.metrics.generation_seconds for run in selected]),
+                average_total_seconds=_mean([run.metrics.total_seconds for run in selected]),
             )
         )
 
@@ -949,17 +1164,214 @@ async def run_poisoned_rag_benchmark(
         model=OLLAMA_MODEL,
         points=points,
         runs=runs,
+        failures=failures,
         json_url=f"/experiments/results/{experiment_id}.json",
         csv_url=f"/experiments/results/{experiment_id}.csv",
+        fixed_poison_pool=request.fixed_poison_pool,
     )
     _write_benchmark_artifacts(result)
     await reset_experiment_documents()
     return result
 
 
+@app.post("/experiments/agent-poison", response_model=AgentPoisonResponse)
+async def run_agent_poison_experiment(
+    request: AgentPoisonRequest,
+) -> AgentPoisonResponse:
+    """Run an isolated AgentPoison reproduction without mutating Chroma."""
+    run_id = f"agentpoison-{uuid4().hex[:12]}"
+    records = load_json_documents(
+        Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"
+    )[: request.benign_corpus_limit]
+    benign_memories = [
+        (str(item["text"]), str(item["text"]), False) for item in records
+    ]
+    embedding = create_embeddings()
+    best, history = optimize_trigger(
+        embedding,
+        queries=request.train_queries,
+        benign_texts=[key for key, _value, _poisoned in benign_memories],
+        seed_trigger=request.seed_trigger,
+        candidate_tokens=request.candidate_tokens,
+        iterations=request.iterations,
+    )
+    poison_memories = [
+        (
+            f"{request.train_queries[index % len(request.train_queries)]} {best.trigger}",
+            request.target_action,
+            True,
+        )
+        for index in range(request.poison_count)
+    ]
+    poisoned_memory = benign_memories + poison_memories
+    trials: list[dict[str, object]] = []
+    retrieval_successes = action_successes = end_to_end_successes = preserved = 0
+    for query in request.test_queries:
+        clean_ranked = rank_memory(
+            embedding, query=query, memories=benign_memories, top_k=request.top_k
+        )
+        clean_under_poison = rank_memory(
+            embedding, query=query, memories=poisoned_memory, top_k=request.top_k
+        )
+        triggered_query = f"{query} {best.trigger}"
+        triggered_ranked = rank_memory(
+            embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
+        )
+        retrieved = retrieval_success(triggered_ranked)
+        clean_answer = await _answer_with_supplied_context(
+            query, "\n\n".join(item[1] for item in clean_ranked)
+        )
+        clean_poisoned_answer = await _answer_with_supplied_context(
+            query, "\n\n".join(item[1] for item in clean_under_poison)
+        )
+        triggered_answer = await _answer_with_supplied_context(
+            triggered_query, "\n\n".join(item[1] for item in triggered_ranked)
+        )
+        action_succeeded = phrase_present(triggered_answer, request.target_action)
+        retrieval_successes += int(retrieved)
+        action_successes += int(retrieved and action_succeeded)
+        end_to_end_successes += int(action_succeeded)
+        preserved += int(normalize_text(clean_answer) == normalize_text(clean_poisoned_answer))
+        trials.append({
+            "query": query,
+            "triggered_query": triggered_query,
+            "retrieval_success": retrieved,
+            "poison_in_top_k": sum(item[2] for item in triggered_ranked),
+            "action_succeeded": action_succeeded,
+            "clean_answer": clean_answer,
+            "clean_under_poison_answer": clean_poisoned_answer,
+            "triggered_answer": triggered_answer,
+            "retrieved": [
+                {"key": key, "value": value, "poisoned": poisoned, "score": round(score, 6)}
+                for key, value, poisoned, score in triggered_ranked
+            ],
+        })
+    total = len(request.test_queries)
+    metrics = AgentPoisonMetrics(
+        asr_r=round(retrieval_successes / total, 4),
+        asr_a=round(action_successes / retrieval_successes, 4) if retrieval_successes else 0.0,
+        asr_t=round(end_to_end_successes / total, 4),
+        benign_accuracy=round(preserved / total, 4),
+        poison_rate=round(request.poison_count / len(poisoned_memory), 6),
+    )
+    result = AgentPoisonResponse(
+        run_id=run_id,
+        trigger=best.trigger,
+        objective=best.objective,
+        uniqueness=best.uniqueness,
+        compactness=best.compactness,
+        objective_history=[item.objective for item in history],
+        target_action=request.target_action,
+        poison_count=request.poison_count,
+        corpus_count=len(poisoned_memory),
+        metrics=metrics,
+        trials=trials,
+    )
+    EXPERIMENT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    (EXPERIMENT_RESULTS_DIR / f"{run_id}.json").write_text(
+        json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return result
+
+
+def _write_agent_poison_benchmark_artifacts(
+    result: AgentPoisonBenchmarkResponse,
+) -> None:
+    EXPERIMENT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    json_path = EXPERIMENT_RESULTS_DIR / f"{result.experiment_id}.json"
+    csv_path = EXPERIMENT_RESULTS_DIR / f"{result.experiment_id}.csv"
+    json_path.write_text(
+        json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    with csv_path.open("w", encoding="utf-8", newline="") as output:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=list(AgentPoisonBenchmarkPoint.model_fields),
+        )
+        writer.writeheader()
+        writer.writerows(point.model_dump() for point in result.points)
+
+
+@app.post(
+    "/experiments/agent-poison/benchmark",
+    response_model=AgentPoisonBenchmarkResponse,
+)
+async def run_agent_poison_benchmark(
+    request: AgentPoisonBenchmarkRequest,
+) -> AgentPoisonBenchmarkResponse:
+    """Sweep poison_count for a fixed AgentPoison scenario, in-memory only."""
+    experiment_id = f"agentpoison-bench-{uuid4().hex[:12]}"
+    runs: list[AgentPoisonResponse] = []
+    failures: list[AgentPoisonBenchmarkFailure] = []
+    for poison_count in request.poison_counts:
+        for repetition in range(1, request.repetitions + 1):
+            attempt_started = perf_counter()
+            try:
+                run = await run_agent_poison_experiment(
+                    AgentPoisonRequest(
+                        train_queries=request.train_queries,
+                        test_queries=request.test_queries,
+                        target_action=request.target_action,
+                        seed_trigger=request.seed_trigger,
+                        candidate_tokens=request.candidate_tokens,
+                        poison_count=poison_count,
+                        top_k=request.top_k,
+                        iterations=request.iterations,
+                        benign_corpus_limit=request.benign_corpus_limit,
+                    )
+                )
+            except Exception as exc:
+                detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                failures.append(
+                    AgentPoisonBenchmarkFailure(
+                        poison_count=poison_count,
+                        repetition=repetition,
+                        error_type=type(exc).__name__,
+                        detail=str(detail)[:1000],
+                        elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                    )
+                )
+                continue
+            runs.append(run)
+
+    points: list[AgentPoisonBenchmarkPoint] = []
+    for poison_count in request.poison_counts:
+        selected = [run for run in runs if run.poison_count == poison_count]
+        selected_failures = [
+            failure for failure in failures if failure.poison_count == poison_count
+        ]
+        points.append(
+            AgentPoisonBenchmarkPoint(
+                poison_count=poison_count,
+                trials=len(selected) + len(selected_failures),
+                successful_trials=len(selected),
+                failed_trials=len(selected_failures),
+                asr_r=_mean([run.metrics.asr_r for run in selected]),
+                asr_a=_mean([run.metrics.asr_a for run in selected]),
+                asr_t=_mean([run.metrics.asr_t for run in selected]),
+                benign_accuracy=_mean([run.metrics.benign_accuracy for run in selected]),
+                average_poison_rate=_mean([run.metrics.poison_rate for run in selected]),
+            )
+        )
+
+    result = AgentPoisonBenchmarkResponse(
+        experiment_id=experiment_id,
+        model=OLLAMA_MODEL,
+        points=points,
+        runs=runs,
+        failures=failures,
+        json_url=f"/experiments/results/{experiment_id}.json",
+        csv_url=f"/experiments/results/{experiment_id}.csv",
+    )
+    _write_agent_poison_benchmark_artifacts(result)
+    return result
+
+
 @app.get("/experiments/results/{filename}")
 async def download_experiment_result(filename: str) -> FileResponse:
-    if not filename.startswith("poisonedrag-") or not filename.endswith((".json", ".csv")):
+    if not filename.startswith(("poisonedrag-", "agentpoison-")) or not filename.endswith((".json", ".csv")):
         raise HTTPException(status_code=404, detail="Experiment result not found")
     path = EXPERIMENT_RESULTS_DIR / filename
     if not path.is_file():

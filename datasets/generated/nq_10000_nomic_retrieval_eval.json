@@ -1,0 +1,1731 @@
+{
+  "created_at": "2026-08-11T08:17:07.225053+00:00",
+  "base_url": "http://127.0.0.1:8000",
+  "top_k": 5,
+  "scenario_count": 100,
+  "successful_queries": 100,
+  "failed_queries": 0,
+  "hit_count": 100,
+  "hit_rate": 1.0,
+  "mrr": 0.9658333333333334,
+  "rows": [
+    {
+      "scenario_id": "test1",
+      "query": "how many episodes are in chicago fire season 4",
+      "relevant_document_ids": [
+        "beir-nq-doc6"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6",
+        "beir-nq-doc827566",
+        "beir-nq-doc1977618",
+        "beir-nq-doc635",
+        "beir-nq-doc2139149"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test11",
+      "query": "who recorded i can't help falling in love with you",
+      "relevant_document_ids": [
+        "beir-nq-doc136"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc136",
+        "beir-nq-doc17134",
+        "beir-nq-doc17132",
+        "beir-nq-doc673159",
+        "beir-nq-doc13979"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test16",
+      "query": "what was the name of atom bomb dropped by usa on hiroshima",
+      "relevant_document_ids": [
+        "beir-nq-doc305"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc305",
+        "beir-nq-doc1576898",
+        "beir-nq-doc2175751",
+        "beir-nq-doc1670887",
+        "beir-nq-doc611086"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test19",
+      "query": "where are the mitochondria located in the sperm",
+      "relevant_document_ids": [
+        "beir-nq-doc565",
+        "beir-nq-doc579"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc579",
+        "beir-nq-doc565",
+        "beir-nq-doc467993",
+        "beir-nq-doc1369819",
+        "beir-nq-doc1089049"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test20",
+      "query": "how many lines of symmetry are there in a equilateral triangle",
+      "relevant_document_ids": [
+        "beir-nq-doc618"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc618",
+        "beir-nq-doc1131306",
+        "beir-nq-doc42242",
+        "beir-nq-doc1169755",
+        "beir-nq-doc1803325"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test21",
+      "query": "how many seasons of the oc are there",
+      "relevant_document_ids": [
+        "beir-nq-doc635"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc635",
+        "beir-nq-doc119610",
+        "beir-nq-doc215385",
+        "beir-nq-doc389198",
+        "beir-nq-doc2420742"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test31",
+      "query": "who do you meet at the gates of heaven",
+      "relevant_document_ids": [
+        "beir-nq-doc897"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc897",
+        "beir-nq-doc2582898",
+        "beir-nq-doc1098287",
+        "beir-nq-doc103693",
+        "beir-nq-doc2512557"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test47",
+      "query": "how long prime minister stay in office canada",
+      "relevant_document_ids": [
+        "beir-nq-doc1215"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1215",
+        "beir-nq-doc375323",
+        "beir-nq-doc379384",
+        "beir-nq-doc2515733",
+        "beir-nq-doc1796609"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test50",
+      "query": "do all private schools have uniforms in america",
+      "relevant_document_ids": [
+        "beir-nq-doc1404",
+        "beir-nq-doc1405",
+        "beir-nq-doc1407"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1405",
+        "beir-nq-doc1407",
+        "beir-nq-doc1404",
+        "beir-nq-doc317215",
+        "beir-nq-doc1056336"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test53",
+      "query": "where did aeneas go when he left carthage",
+      "relevant_document_ids": [
+        "beir-nq-doc1448"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1448",
+        "beir-nq-doc1450",
+        "beir-nq-doc753679",
+        "beir-nq-doc2560829",
+        "beir-nq-doc2560873"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test57",
+      "query": "where was the capital of the habsburg empire located",
+      "relevant_document_ids": [
+        "beir-nq-doc1580"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1580",
+        "beir-nq-doc97773",
+        "beir-nq-doc920796",
+        "beir-nq-doc922190",
+        "beir-nq-doc1266291"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test58",
+      "query": "who plays general hux in the last jedi",
+      "relevant_document_ids": [
+        "beir-nq-doc1599"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1599",
+        "beir-nq-doc10125",
+        "beir-nq-doc1291250",
+        "beir-nq-doc1385614",
+        "beir-nq-doc341549"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test60",
+      "query": "when were the winnie the pooh books written",
+      "relevant_document_ids": [
+        "beir-nq-doc1631"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1631",
+        "beir-nq-doc7050",
+        "beir-nq-doc497442",
+        "beir-nq-doc145336",
+        "beir-nq-doc1095817"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test62",
+      "query": "who wrote the theme song for mission impossible",
+      "relevant_document_ids": [
+        "beir-nq-doc1729"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1729",
+        "beir-nq-doc310111",
+        "beir-nq-doc2553418",
+        "beir-nq-doc2475629",
+        "beir-nq-doc969126"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test64",
+      "query": "where is the slide placed on the microscope",
+      "relevant_document_ids": [
+        "beir-nq-doc1754"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1754",
+        "beir-nq-doc1763",
+        "beir-nq-doc1089049",
+        "beir-nq-doc2464712",
+        "beir-nq-doc920104"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test70",
+      "query": "when does isle of dogs come out in us",
+      "relevant_document_ids": [
+        "beir-nq-doc2107"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2107",
+        "beir-nq-doc276173",
+        "beir-nq-doc2340766",
+        "beir-nq-doc2030983",
+        "beir-nq-doc2522027"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test75",
+      "query": "how long do nhl players stay on waivers",
+      "relevant_document_ids": [
+        "beir-nq-doc2262"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2262",
+        "beir-nq-doc2044016",
+        "beir-nq-doc362209",
+        "beir-nq-doc680079",
+        "beir-nq-doc2044007"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test77",
+      "query": "who stepped out of the dithyrambic chorus to become the first actor",
+      "relevant_document_ids": [
+        "beir-nq-doc2319"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2319",
+        "beir-nq-doc977559",
+        "beir-nq-doc2207277",
+        "beir-nq-doc1602826",
+        "beir-nq-doc1130688"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test79",
+      "query": "who sings jungle book i wanna be like you",
+      "relevant_document_ids": [
+        "beir-nq-doc2368"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2368",
+        "beir-nq-doc1716935",
+        "beir-nq-doc2472543",
+        "beir-nq-doc1876771",
+        "beir-nq-doc7050"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test82",
+      "query": "when did the apple iphone se come out",
+      "relevant_document_ids": [
+        "beir-nq-doc2493"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2493",
+        "beir-nq-doc2494",
+        "beir-nq-doc422968",
+        "beir-nq-doc1951586",
+        "beir-nq-doc303227"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test87",
+      "query": "when was the first underwater cable laid beneath the english channel",
+      "relevant_document_ids": [
+        "beir-nq-doc2805"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2805",
+        "beir-nq-doc16973",
+        "beir-nq-doc2069085",
+        "beir-nq-doc431774",
+        "beir-nq-doc1234803"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test88",
+      "query": "where is the setting for beauty and the beast",
+      "relevant_document_ids": [
+        "beir-nq-doc2834"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2834",
+        "beir-nq-doc337550",
+        "beir-nq-doc7050",
+        "beir-nq-doc1006143",
+        "beir-nq-doc2215053"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test90",
+      "query": "where does the donkey talk in the bible",
+      "relevant_document_ids": [
+        "beir-nq-doc2961"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc2961",
+        "beir-nq-doc1406514",
+        "beir-nq-doc354915",
+        "beir-nq-doc988189",
+        "beir-nq-doc679544"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test94",
+      "query": "who sings it's my party and i cry if i want to",
+      "relevant_document_ids": [
+        "beir-nq-doc3057"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc3057",
+        "beir-nq-doc2472543",
+        "beir-nq-doc89287",
+        "beir-nq-doc2271217",
+        "beir-nq-doc1901684"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test106",
+      "query": "who holds the world record for the most world records",
+      "relevant_document_ids": [
+        "beir-nq-doc3852"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc3852",
+        "beir-nq-doc2471115",
+        "beir-nq-doc1687138",
+        "beir-nq-doc1019961",
+        "beir-nq-doc2039930"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test107",
+      "query": "who sang on great gig in the sky",
+      "relevant_document_ids": [
+        "beir-nq-doc3859"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc3859",
+        "beir-nq-doc760762",
+        "beir-nq-doc72829",
+        "beir-nq-doc664790",
+        "beir-nq-doc2113280"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test110",
+      "query": "how many seasons of from dusk till dawn are there",
+      "relevant_document_ids": [
+        "beir-nq-doc3974"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc3974",
+        "beir-nq-doc215391",
+        "beir-nq-doc215385",
+        "beir-nq-doc643465",
+        "beir-nq-doc119610"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test113",
+      "query": "who is responsible for introducing the principle of uniformitarianism",
+      "relevant_document_ids": [
+        "beir-nq-doc4100",
+        "beir-nq-doc4101"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc4101",
+        "beir-nq-doc4100",
+        "beir-nq-doc1648829",
+        "beir-nq-doc765457",
+        "beir-nq-doc1833187"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test120",
+      "query": "when did the astros change from the national league to the american league",
+      "relevant_document_ids": [
+        "beir-nq-doc4449",
+        "beir-nq-doc4523"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc4449",
+        "beir-nq-doc4523",
+        "beir-nq-doc4455",
+        "beir-nq-doc5996",
+        "beir-nq-doc1048103"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test127",
+      "query": "jharkhand which festival is associated with cattle worship",
+      "relevant_document_ids": [
+        "beir-nq-doc4743"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc4743",
+        "beir-nq-doc515467",
+        "beir-nq-doc844769",
+        "beir-nq-doc1263296",
+        "beir-nq-doc918507"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test130",
+      "query": "what is the center of heredity in a cell",
+      "relevant_document_ids": [
+        "beir-nq-doc4898",
+        "beir-nq-doc4903"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc4898",
+        "beir-nq-doc565",
+        "beir-nq-doc1827591",
+        "beir-nq-doc69239",
+        "beir-nq-doc4903"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test138",
+      "query": "what is the name of season 6 of american horror story",
+      "relevant_document_ids": [
+        "beir-nq-doc5165"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5165",
+        "beir-nq-doc635462",
+        "beir-nq-doc676223",
+        "beir-nq-doc455672",
+        "beir-nq-doc944796"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test145",
+      "query": "who played big enos in smokey and the bandit",
+      "relevant_document_ids": [
+        "beir-nq-doc5395"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5395",
+        "beir-nq-doc368523",
+        "beir-nq-doc1531200",
+        "beir-nq-doc827832",
+        "beir-nq-doc1321795"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test152",
+      "query": "where does sex and the city take place",
+      "relevant_document_ids": [
+        "beir-nq-doc5548"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5548",
+        "beir-nq-doc2360038",
+        "beir-nq-doc2215053",
+        "beir-nq-doc1128246",
+        "beir-nq-doc2384452"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test156",
+      "query": "who is considered the father of modern behaviorism",
+      "relevant_document_ids": [
+        "beir-nq-doc5758"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5758",
+        "beir-nq-doc729680",
+        "beir-nq-doc765457",
+        "beir-nq-doc2148245",
+        "beir-nq-doc2347738"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test157",
+      "query": "joined mexico and the united states to form nafta",
+      "relevant_document_ids": [
+        "beir-nq-doc5794"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5794",
+        "beir-nq-doc2575729",
+        "beir-nq-doc2346019",
+        "beir-nq-doc129920",
+        "beir-nq-doc1391282"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test159",
+      "query": "where do the elves go on the boat in lord of the rings",
+      "relevant_document_ids": [
+        "beir-nq-doc5822",
+        "beir-nq-doc5831"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc482715",
+        "beir-nq-doc5831",
+        "beir-nq-doc692346",
+        "beir-nq-doc1268963",
+        "beir-nq-doc2287217"
+      ],
+      "first_relevant_rank": 2,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test161",
+      "query": "who is the guy that jumped from space",
+      "relevant_document_ids": [
+        "beir-nq-doc5875"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5875",
+        "beir-nq-doc2070529",
+        "beir-nq-doc1981444",
+        "beir-nq-doc1294033",
+        "beir-nq-doc682738"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test164",
+      "query": "who won the american league pennant in 2017",
+      "relevant_document_ids": [
+        "beir-nq-doc5996"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc5996",
+        "beir-nq-doc687324",
+        "beir-nq-doc4449",
+        "beir-nq-doc4523",
+        "beir-nq-doc366374"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test165",
+      "query": "when did hollywood become the centre of the film industry",
+      "relevant_document_ids": [
+        "beir-nq-doc6016",
+        "beir-nq-doc6026"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6016",
+        "beir-nq-doc6026",
+        "beir-nq-doc640423",
+        "beir-nq-doc498938",
+        "beir-nq-doc2574992"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test166",
+      "query": "where are the cardiac and vasomotor centers found",
+      "relevant_document_ids": [
+        "beir-nq-doc6062"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6062",
+        "beir-nq-doc728506",
+        "beir-nq-doc1111703",
+        "beir-nq-doc922261",
+        "beir-nq-doc10945"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test177",
+      "query": "who plays the little girl in jurassic park",
+      "relevant_document_ids": [
+        "beir-nq-doc6493"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6493",
+        "beir-nq-doc205302",
+        "beir-nq-doc590188",
+        "beir-nq-doc2309767",
+        "beir-nq-doc1006602"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test185",
+      "query": "when does star wars battlefront 2 com out",
+      "relevant_document_ids": [
+        "beir-nq-doc6760"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6760",
+        "beir-nq-doc2416819",
+        "beir-nq-doc1214343",
+        "beir-nq-doc298308",
+        "beir-nq-doc10125"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test188",
+      "query": "how many episodes of greys anatomy season 14",
+      "relevant_document_ids": [
+        "beir-nq-doc6895"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6895",
+        "beir-nq-doc1977618",
+        "beir-nq-doc1221421",
+        "beir-nq-doc245801",
+        "beir-nq-doc356713"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test191",
+      "query": "who proposed evolution in 1859 as the basis of biological development",
+      "relevant_document_ids": [
+        "beir-nq-doc6964"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc6964",
+        "beir-nq-doc6987",
+        "beir-nq-doc69239",
+        "beir-nq-doc1657189",
+        "beir-nq-doc4903"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test192",
+      "query": "does the jungle book take place in india",
+      "relevant_document_ids": [
+        "beir-nq-doc7050",
+        "beir-nq-doc7056"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc7056",
+        "beir-nq-doc7050",
+        "beir-nq-doc457339",
+        "beir-nq-doc1075442",
+        "beir-nq-doc491085"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test208",
+      "query": "who wrote the song what child is this",
+      "relevant_document_ids": [
+        "beir-nq-doc7543"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc7543",
+        "beir-nq-doc1557217",
+        "beir-nq-doc2225201",
+        "beir-nq-doc1136762",
+        "beir-nq-doc95426"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test213",
+      "query": "who won the most mvp awards in the nba",
+      "relevant_document_ids": [
+        "beir-nq-doc7709"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc7709",
+        "beir-nq-doc820507",
+        "beir-nq-doc211628",
+        "beir-nq-doc2282090",
+        "beir-nq-doc1294033"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test216",
+      "query": "patents to produce and sell inventions are conveyed by the federal government for a period​ of",
+      "relevant_document_ids": [
+        "beir-nq-doc7808",
+        "beir-nq-doc7820"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc7808",
+        "beir-nq-doc7820",
+        "beir-nq-doc7809",
+        "beir-nq-doc1429841",
+        "beir-nq-doc316323"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test226",
+      "query": "the most stable mineral at the earth's surface",
+      "relevant_document_ids": [
+        "beir-nq-doc8127"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc906586",
+        "beir-nq-doc507470",
+        "beir-nq-doc8127",
+        "beir-nq-doc288215",
+        "beir-nq-doc2204916"
+      ],
+      "first_relevant_rank": 3,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test228",
+      "query": "how many games in a row have the uconn women's basketball team won",
+      "relevant_document_ids": [
+        "beir-nq-doc8162"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc8162",
+        "beir-nq-doc8232",
+        "beir-nq-doc576462",
+        "beir-nq-doc1788319",
+        "beir-nq-doc2447395"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test229",
+      "query": "when did scotland last qualify for world cup",
+      "relevant_document_ids": [
+        "beir-nq-doc8271"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc8271",
+        "beir-nq-doc177765",
+        "beir-nq-doc2119669",
+        "beir-nq-doc178529",
+        "beir-nq-doc386442"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test231",
+      "query": "who plays the main character in hacksaw ridge",
+      "relevant_document_ids": [
+        "beir-nq-doc8420"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc8420",
+        "beir-nq-doc511220",
+        "beir-nq-doc2482976",
+        "beir-nq-doc209397",
+        "beir-nq-doc958623"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test243",
+      "query": "where did the titanic sink at what ocean",
+      "relevant_document_ids": [
+        "beir-nq-doc8930",
+        "beir-nq-doc8994"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc8930",
+        "beir-nq-doc8994",
+        "beir-nq-doc695729",
+        "beir-nq-doc14850",
+        "beir-nq-doc1832606"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test254",
+      "query": "the concept of micro financing was developed by who in 1976",
+      "relevant_document_ids": [
+        "beir-nq-doc9487",
+        "beir-nq-doc9497"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc9497",
+        "beir-nq-doc1067455",
+        "beir-nq-doc363262",
+        "beir-nq-doc434004",
+        "beir-nq-doc19050"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test256",
+      "query": "when is the world consumer right day celebrated",
+      "relevant_document_ids": [
+        "beir-nq-doc9596"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc9596",
+        "beir-nq-doc676101",
+        "beir-nq-doc674324",
+        "beir-nq-doc1424635",
+        "beir-nq-doc41367"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test273",
+      "query": "when is star wars the force awakens set",
+      "relevant_document_ids": [
+        "beir-nq-doc10125",
+        "beir-nq-doc10128"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc10125",
+        "beir-nq-doc10128",
+        "beir-nq-doc10165",
+        "beir-nq-doc6760",
+        "beir-nq-doc1599"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test282",
+      "query": "who did the chiefs play in the playoffs",
+      "relevant_document_ids": [
+        "beir-nq-doc10659"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc10659",
+        "beir-nq-doc1826977",
+        "beir-nq-doc140204",
+        "beir-nq-doc1837169",
+        "beir-nq-doc1530310"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test291",
+      "query": "what does the adrenal gland produce that is necessary for the sympathetic nervous system to function",
+      "relevant_document_ids": [
+        "beir-nq-doc10945"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc10945",
+        "beir-nq-doc630211",
+        "beir-nq-doc1406067",
+        "beir-nq-doc875743",
+        "beir-nq-doc2064572"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test294",
+      "query": "who was the oldest man elected president of usa",
+      "relevant_document_ids": [
+        "beir-nq-doc11092"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc11092",
+        "beir-nq-doc331018",
+        "beir-nq-doc423419",
+        "beir-nq-doc1189097",
+        "beir-nq-doc671837"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test308",
+      "query": "a synonym for the content component of communication is",
+      "relevant_document_ids": [
+        "beir-nq-doc11853",
+        "beir-nq-doc11854"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc11853",
+        "beir-nq-doc11854",
+        "beir-nq-doc2537216",
+        "beir-nq-doc2440273",
+        "beir-nq-doc1034338"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test311",
+      "query": "where do the sharks play in san jose",
+      "relevant_document_ids": [
+        "beir-nq-doc11902"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc11902",
+        "beir-nq-doc1480813",
+        "beir-nq-doc11955",
+        "beir-nq-doc2290603",
+        "beir-nq-doc2112900"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test312",
+      "query": "where are more than half your bones located",
+      "relevant_document_ids": [
+        "beir-nq-doc11963"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc11963",
+        "beir-nq-doc1683646",
+        "beir-nq-doc1021330",
+        "beir-nq-doc2253993",
+        "beir-nq-doc662169"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test315",
+      "query": "who dies in the beginning of deathly hallows part 1",
+      "relevant_document_ids": [
+        "beir-nq-doc12046"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12046",
+        "beir-nq-doc708383",
+        "beir-nq-doc2136143",
+        "beir-nq-doc2232975",
+        "beir-nq-doc203079"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test317",
+      "query": "who wrote the music phantom of the opera",
+      "relevant_document_ids": [
+        "beir-nq-doc12091"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12091",
+        "beir-nq-doc148800",
+        "beir-nq-doc148798",
+        "beir-nq-doc2334901",
+        "beir-nq-doc942212"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test318",
+      "query": "who represented the state of tennessee in the scopes trial",
+      "relevant_document_ids": [
+        "beir-nq-doc12138"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12138",
+        "beir-nq-doc1751933",
+        "beir-nq-doc1170419",
+        "beir-nq-doc1483679",
+        "beir-nq-doc1926284"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test327",
+      "query": "what river is associated with the city of rome",
+      "relevant_document_ids": [
+        "beir-nq-doc12588"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12588",
+        "beir-nq-doc1253939",
+        "beir-nq-doc2560873",
+        "beir-nq-doc177478",
+        "beir-nq-doc1299555"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test332",
+      "query": "who played miss wheeler in carry on teacher",
+      "relevant_document_ids": [
+        "beir-nq-doc12764"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12764",
+        "beir-nq-doc2178505",
+        "beir-nq-doc1006602",
+        "beir-nq-doc1008",
+        "beir-nq-doc958623"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test337",
+      "query": "what are the colors of the netherlands flag",
+      "relevant_document_ids": [
+        "beir-nq-doc12801"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc12801",
+        "beir-nq-doc1219148",
+        "beir-nq-doc2368904",
+        "beir-nq-doc2239544",
+        "beir-nq-doc2464027"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test347",
+      "query": "when did the us dollar leave the gold standard",
+      "relevant_document_ids": [
+        "beir-nq-doc13224",
+        "beir-nq-doc13229",
+        "beir-nq-doc13230"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc13230",
+        "beir-nq-doc13229",
+        "beir-nq-doc13224",
+        "beir-nq-doc1931675",
+        "beir-nq-doc1317651"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test348",
+      "query": "where did the smashing pumpkins get their name",
+      "relevant_document_ids": [
+        "beir-nq-doc13258"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc13258",
+        "beir-nq-doc2117723",
+        "beir-nq-doc1478524",
+        "beir-nq-doc472473",
+        "beir-nq-doc1833340"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test363",
+      "query": "what is the main industry in the canadian shield",
+      "relevant_document_ids": [
+        "beir-nq-doc13860",
+        "beir-nq-doc13874"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc13874",
+        "beir-nq-doc13860",
+        "beir-nq-doc2306652",
+        "beir-nq-doc2359307",
+        "beir-nq-doc382442"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test369",
+      "query": "who wrote the song to make you feel my love",
+      "relevant_document_ids": [
+        "beir-nq-doc13979"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc13979",
+        "beir-nq-doc13988",
+        "beir-nq-doc963204",
+        "beir-nq-doc1485589",
+        "beir-nq-doc430961"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test371",
+      "query": "where did immigrants enter the us on the west coast",
+      "relevant_document_ids": [
+        "beir-nq-doc14004"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc1057509",
+        "beir-nq-doc117211",
+        "beir-nq-doc1900680",
+        "beir-nq-doc14004",
+        "beir-nq-doc381389"
+      ],
+      "first_relevant_rank": 4,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test375",
+      "query": "what is the lead singers name of staind",
+      "relevant_document_ids": [
+        "beir-nq-doc14134"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc14134",
+        "beir-nq-doc573357",
+        "beir-nq-doc2319",
+        "beir-nq-doc1908890",
+        "beir-nq-doc857289"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test379",
+      "query": "who is considered the pioneer of the roman typeface",
+      "relevant_document_ids": [
+        "beir-nq-doc14281"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc14281",
+        "beir-nq-doc1551694",
+        "beir-nq-doc1551708",
+        "beir-nq-doc258600",
+        "beir-nq-doc1185490"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test383",
+      "query": "who spoke the words ich bin ein berliner",
+      "relevant_document_ids": [
+        "beir-nq-doc14343"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc14343",
+        "beir-nq-doc1560927",
+        "beir-nq-doc2245809",
+        "beir-nq-doc2434733",
+        "beir-nq-doc2118666"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test387",
+      "query": "where did the queen's crown come from",
+      "relevant_document_ids": [
+        "beir-nq-doc14516"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc844820",
+        "beir-nq-doc14516",
+        "beir-nq-doc1256871",
+        "beir-nq-doc2083025",
+        "beir-nq-doc2223799"
+      ],
+      "first_relevant_rank": 2,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test395",
+      "query": "who painted the world famous painting the last supper",
+      "relevant_document_ids": [
+        "beir-nq-doc14779"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc14779",
+        "beir-nq-doc870812",
+        "beir-nq-doc1271218",
+        "beir-nq-doc454283",
+        "beir-nq-doc1841389"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test397",
+      "query": "atlantic ocean's shape is similar to which english alphabet",
+      "relevant_document_ids": [
+        "beir-nq-doc14850"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc14850",
+        "beir-nq-doc2530489",
+        "beir-nq-doc2409550",
+        "beir-nq-doc818839",
+        "beir-nq-doc1381164"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test400",
+      "query": "what is the name given to the common currency to the european union",
+      "relevant_document_ids": [
+        "beir-nq-doc15007",
+        "beir-nq-doc15008"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15008",
+        "beir-nq-doc15007",
+        "beir-nq-doc325894",
+        "beir-nq-doc796155",
+        "beir-nq-doc796176"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test404",
+      "query": "is there a 4th book in the kane chronicles",
+      "relevant_document_ids": [
+        "beir-nq-doc15106"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15106",
+        "beir-nq-doc2642942",
+        "beir-nq-doc1517318",
+        "beir-nq-doc820872",
+        "beir-nq-doc1744998"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test407",
+      "query": "the actual name of the confederate force at gettysburg was",
+      "relevant_document_ids": [
+        "beir-nq-doc15138"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15138",
+        "beir-nq-doc2291690",
+        "beir-nq-doc1074623",
+        "beir-nq-doc2675070",
+        "beir-nq-doc477447"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test408",
+      "query": "what is the name for the ch3coo- ion",
+      "relevant_document_ids": [
+        "beir-nq-doc15223"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15223",
+        "beir-nq-doc1478472",
+        "beir-nq-doc951966",
+        "beir-nq-doc560144",
+        "beir-nq-doc675625"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test410",
+      "query": "who is darrell brother in the walking dead",
+      "relevant_document_ids": [
+        "beir-nq-doc15305"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc968845",
+        "beir-nq-doc15305",
+        "beir-nq-doc1787311",
+        "beir-nq-doc284111",
+        "beir-nq-doc1112250"
+      ],
+      "first_relevant_rank": 2,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test412",
+      "query": "number 4 in roman numerals on clock faces",
+      "relevant_document_ids": [
+        "beir-nq-doc15346"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15346",
+        "beir-nq-doc191043",
+        "beir-nq-doc750055",
+        "beir-nq-doc1812931",
+        "beir-nq-doc2118754"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test413",
+      "query": "the general term for software that is designed to damage disable or steal data is",
+      "relevant_document_ids": [
+        "beir-nq-doc15401"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15401",
+        "beir-nq-doc1172058",
+        "beir-nq-doc1375954",
+        "beir-nq-doc658680",
+        "beir-nq-doc1607987"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test417",
+      "query": "who played kelly taylor's mom on 90210",
+      "relevant_document_ids": [
+        "beir-nq-doc15639"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15639",
+        "beir-nq-doc1006602",
+        "beir-nq-doc1440963",
+        "beir-nq-doc3927",
+        "beir-nq-doc876400"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test418",
+      "query": "who does the voice of alistair in dragon age",
+      "relevant_document_ids": [
+        "beir-nq-doc15646"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15646",
+        "beir-nq-doc2586217",
+        "beir-nq-doc1981192",
+        "beir-nq-doc1973605",
+        "beir-nq-doc2621469"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test419",
+      "query": "what nfl coach has the most wins ever",
+      "relevant_document_ids": [
+        "beir-nq-doc15659"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15659",
+        "beir-nq-doc830911",
+        "beir-nq-doc1877167",
+        "beir-nq-doc2282090",
+        "beir-nq-doc1240572"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test423",
+      "query": "who is the song diamonds and rust about",
+      "relevant_document_ids": [
+        "beir-nq-doc15739"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15739",
+        "beir-nq-doc1784029",
+        "beir-nq-doc1168537",
+        "beir-nq-doc1307572",
+        "beir-nq-doc2640928"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test424",
+      "query": "who played the oldest brother in 7th heaven",
+      "relevant_document_ids": [
+        "beir-nq-doc15760"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15760",
+        "beir-nq-doc425280",
+        "beir-nq-doc844547",
+        "beir-nq-doc20326",
+        "beir-nq-doc284111"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test426",
+      "query": "where was the war of the planet of the apes filmed",
+      "relevant_document_ids": [
+        "beir-nq-doc15851"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15851",
+        "beir-nq-doc2339334",
+        "beir-nq-doc178331",
+        "beir-nq-doc1696936",
+        "beir-nq-doc836683"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test430",
+      "query": "which term is used to identify having official power to act",
+      "relevant_document_ids": [
+        "beir-nq-doc15928"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc15928",
+        "beir-nq-doc1664497",
+        "beir-nq-doc1648829",
+        "beir-nq-doc692638",
+        "beir-nq-doc472315"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test442",
+      "query": "how many death stars are there in star wars",
+      "relevant_document_ids": [
+        "beir-nq-doc16473"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc16473",
+        "beir-nq-doc10125",
+        "beir-nq-doc341549",
+        "beir-nq-doc2287249",
+        "beir-nq-doc1224903"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test452",
+      "query": "when does season 8 of vampire diaries come out",
+      "relevant_document_ids": [
+        "beir-nq-doc16742"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc16742",
+        "beir-nq-doc460973",
+        "beir-nq-doc284111",
+        "beir-nq-doc648285",
+        "beir-nq-doc635462"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test454",
+      "query": "when did harry potter and the sorcerers stone take place",
+      "relevant_document_ids": [
+        "beir-nq-doc16752"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc16752",
+        "beir-nq-doc1717638",
+        "beir-nq-doc1263342",
+        "beir-nq-doc2247287",
+        "beir-nq-doc1619481"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test462",
+      "query": "where is the suez canal located on a map",
+      "relevant_document_ids": [
+        "beir-nq-doc16973"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc16973",
+        "beir-nq-doc523655",
+        "beir-nq-doc780155",
+        "beir-nq-doc1234803",
+        "beir-nq-doc1290960"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test464",
+      "query": "how much square feet is a basketball court",
+      "relevant_document_ids": [
+        "beir-nq-doc17092"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc17092",
+        "beir-nq-doc895679",
+        "beir-nq-doc1112192",
+        "beir-nq-doc1233768",
+        "beir-nq-doc1284864"
+      ],
+      "first_relevant_rank": 1,
+      "hit": true,
+      "error": null
+    },
+    {
+      "scenario_id": "test466",
+      "query": "who sings i can't take my eyes off of you",
+      "relevant_document_ids": [
+        "beir-nq-doc17132"
+      ],
+      "retrieved_document_ids": [
+        "beir-nq-doc17134",
+        "beir-nq-doc17132",
+        "beir-nq-doc156623",
+        "beir-nq-doc1411886",
+        "beir-nq-doc136"
+      ],
+      "first_relevant_rank": 2,
+      "hit": true,
+      "error": null
+    }
+  ]
+}

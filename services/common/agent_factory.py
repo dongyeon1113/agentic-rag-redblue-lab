@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from services.common.chroma_store import ChromaDocumentStore
+from services.common.embeddings import create_embeddings
 from services.common.schemas import HealthResponse, SearchRequest, SearchResponse
 from services.common.search import JsonDocumentStore
 
@@ -30,6 +31,7 @@ def create_search_agent(
             ),
             persist_directory=persist_directory,
             sync_data_file=sync_data_file,
+            embedding=create_embeddings(),
         )
     else:
         raise ValueError(f"Unsupported SEARCH_BACKEND: {search_backend}")
