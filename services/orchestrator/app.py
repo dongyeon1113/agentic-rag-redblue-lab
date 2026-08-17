@@ -357,10 +357,14 @@ async def _generate_answer(
                 if hit.get("trust") != "untrusted"
                 or hit.get("document_id") in allowed
             ]
-    memory_hits = _recall_memory(request)
+    # Recalled turns share the requested Top-K budget rather than adding to
+    # it, so the context size still matches what the caller asked for. Memory
+    # is capped at half the budget so it can never starve live retrieval.
+    context_limit = min(request.limit, RAG_CONTEXT_LIMIT)
+    memory_hits = _recall_memory(request)[: context_limit // 2]
     context_hits = memory_hits + collect_context_hits(
         results,
-        limit=min(request.limit, RAG_CONTEXT_LIMIT),
+        limit=context_limit - len(memory_hits),
         trusted_only=request.mode == "defended",
     )
     if not context_hits:
