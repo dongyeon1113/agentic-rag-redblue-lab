@@ -191,7 +191,7 @@
         <details class="disclosure"><summary>세부 최적화 설정 및 설명</summary><div class="disclosure-body">
           <div class="double">
             <div class="field"><label for="apIterations">최적화 iteration</label><input id="apIterations" type="number" min="1" max="50" value="8"></div>
-            <div class="field"><label for="apCorpus">격리 corpus 크기</label><input id="apCorpus" type="number" min="10" max="1000" value="100"></div>
+            <div class="field"><label for="apCorpus">격리 corpus 크기</label><input id="apCorpus" type="number" min="10" max="100000" value="100"></div>
           </div>
           <div class="field"><label for="apRepetitions">조건별 반복 횟수</label><input id="apRepetitions" type="number" min="1" max="5" value="1"></div>
           <div class="paper"><b>공식 논문 (NeurIPS 2024)</b>white-box BERT gradient + HotFlip beam search · iterations=1000 · candidates m=500/s=100 · grad batch=30 · GPT-2 coherence 필터 · 실제 target LLM 기반 ASR 측정</div>
