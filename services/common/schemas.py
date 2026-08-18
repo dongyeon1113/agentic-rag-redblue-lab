@@ -433,7 +433,7 @@ class AgentPoisonRequest(BaseModel):
     poison_count: int = Field(default=3, ge=1, le=10)
     top_k: int = Field(default=3, ge=1, le=10)
     iterations: int = Field(default=8, ge=1, le=50)
-    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
 
 
 class AgentPoisonMetrics(BaseModel):
@@ -479,7 +479,7 @@ class AgentPoisonBenchmarkRequest(BaseModel):
     repetitions: int = Field(default=1, ge=1, le=5)
     top_k: int = Field(default=3, ge=1, le=10)
     iterations: int = Field(default=8, ge=1, le=50)
-    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
 
     @model_validator(mode="after")
     def validate_counts(self) -> "AgentPoisonBenchmarkRequest":
