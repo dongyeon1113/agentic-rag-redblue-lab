@@ -23,6 +23,7 @@ Orchestrator :8000 ---- Ollama / Qwen3:8b
   deterministic offline embedding for speed and reproducibility.
 - `vulnerable` mode uses trusted and untrusted passages.
 - `defended` mode removes untrusted passages before answer generation.
+- The orchestrator keeps a persistent per-session long-term memory of turns.
 - `retrieval_defense: "ragpart"` applies a retrieval-stage defense that uses
   no trust labels at all.
 
@@ -94,6 +95,43 @@ curl -X POST http://localhost:8000/answer \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is the capital of France?","sources":["local_db"],"mode":"vulnerable"}'
 ```
+
+## Agent long-term memory
+
+`POST /answer` keeps a per-session memory of past turns and recalls the most
+relevant ones into the next prompt:
+
+```bash
+curl -X POST http://localhost:8000/answer \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query":"What is the capital of France?",
+    "sources":["local_db"],
+    "session_id":"demo-session",
+    "use_memory":true
+  }'
+```
+
+Recalled turns appear in the `memory` field and in the prompt as passages with
+`source=agent-memory`. A turn is remembered as `trusted` only when every
+passage behind it was trusted; a turn answered from poisoned context becomes
+`untrusted` memory, so `defended` mode ignores it. That makes a poisoned answer
+persisting across turns an observable, testable effect.
+
+Inspect and reset memory:
+
+```bash
+curl 'http://localhost:8000/memory?session_id=demo-session'
+```
+
+```bash
+curl -X DELETE 'http://localhost:8000/memory?session_id=demo-session'
+```
+
+Omit `session_id` to list or clear every session. Memory lives on the
+`agent-memory` volume at `AGENT_MEMORY_FILE` and survives restarts.
+`MEMORY_RECALL_LIMIT` controls how many turns are recalled. Experiment
+endpoints default to `use_memory: false` so repeated trials stay independent.
 
 Add a controlled experiment document through the orchestrator:
 
