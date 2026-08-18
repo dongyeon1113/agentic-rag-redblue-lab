@@ -34,6 +34,16 @@ memory that defended mode drops like any other untrusted hit. This makes
 memory persistence of an attack measurable with the existing evaluation code.
 Experiment endpoints default to `use_memory=false` so trials stay independent.
 
+## Retrieval-stage defense
+
+`retrieval_defense: "ragpart"` switches the search agents to a second Chroma
+collection holding `C(N, k)` mean-pooled fragment vectors per document. Each
+combination is queried independently and the resulting top-p lists are merged
+by majority vote (arXiv:2512.24268). It runs before generation and uses no
+trust metadata, so it composes with either `mode`. See
+`docs/ragpart-ragmask.ko.md` for the algorithm, measurements, and its current
+limitation under the offline hash embedding.
+
 ## Trust boundary
 
 All retrieved content is data, not executable instructions. Future connectors

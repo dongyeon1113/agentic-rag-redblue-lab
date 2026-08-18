@@ -9,9 +9,13 @@ class HealthResponse(BaseModel):
     version: str
 
 
+RetrievalDefense = Literal["none", "ragpart"]
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=3, ge=1, le=20)
+    defense: RetrievalDefense = "none"
 
 
 class SearchHit(BaseModel):
@@ -33,6 +37,9 @@ class OrchestratorQueryRequest(SearchRequest):
     sources: list[Literal["local_db", "gmail", "drive"]] = Field(
         default_factory=lambda: ["local_db", "gmail", "drive"]
     )
+    # Retrieval-stage defense, applied by the search agents. Independent of
+    # `mode`, which is a generation-stage trust filter.
+    retrieval_defense: RetrievalDefense = "none"
 
 
 class OrchestratorAnswerRequest(OrchestratorQueryRequest):
@@ -236,6 +243,7 @@ class PoisonedRAGRequest(BaseModel):
     cleanup_before_run: bool = True
     candidate_multiplier: int = Field(default=2, ge=1, le=5)
     fixed_candidates: list["PoisonedRAGCandidate"] | None = Field(default=None, max_length=10)
+    retrieval_defense: RetrievalDefense = "none"
 
     @model_validator(mode="after")
     def answers_must_differ(self) -> "PoisonedRAGRequest":
@@ -264,6 +272,10 @@ class PoisonedRAGCandidate(BaseModel):
 class AttackDashboardMetrics(BaseModel):
     attack_success_rate: float
     accuracy: float
+    # Paper-aligned retrieval-stage metrics (arXiv:2512.24268): ASR counts a
+    # poison anywhere in top-k, SR counts a golden document in top-k.
+    retrieval_attack_success_rate: float = 0.0
+    retrieval_success_rate: float = 0.0
     poison_in_top_k: int
     top_k: int
     retrieval_precision: float
@@ -301,6 +313,7 @@ class PoisonedRAGResponse(BaseModel):
     run_id: str
     scenario_name: str | None = None
     construction: Literal["black_box_q_plus_i"] = "black_box_q_plus_i"
+    retrieval_defense: RetrievalDefense = "none"
     requested_poison_count: int
     generated_candidate_count: int = 0
     verified_poison_count: int
@@ -340,6 +353,11 @@ class PoisonedRAGBenchmarkRequest(BaseModel):
     generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     candidate_multiplier: int = Field(default=2, ge=1, le=5)
     fixed_poison_pool: bool = True
+    retrieval_defenses: list[RetrievalDefense] = Field(
+        default_factory=lambda: ["none"],
+        min_length=1,
+        max_length=2,
+    )
 
     @model_validator(mode="after")
     def validate_counts(self) -> "PoisonedRAGBenchmarkRequest":
@@ -350,12 +368,15 @@ class PoisonedRAGBenchmarkRequest(BaseModel):
 
 
 class PoisonedRAGBenchmarkPoint(BaseModel):
+    retrieval_defense: RetrievalDefense = "none"
     poison_count: int
     trials: int
     successful_trials: int = 0
     failed_trials: int = 0
     attack_success_rate: float
     accuracy: float
+    retrieval_attack_success_rate: float = 0.0
+    retrieval_success_rate: float = 0.0
     retrieval_precision: float
     retrieval_recall: float
     retrieval_f1: float
@@ -367,6 +388,7 @@ class PoisonedRAGBenchmarkPoint(BaseModel):
 
 class PoisonedRAGRunFailure(BaseModel):
     scenario_name: str
+    retrieval_defense: RetrievalDefense = "none"
     poison_count: int
     repetition: int
     stage: Literal["setup", "baseline", "generation", "injection", "retrieval_or_answer", "unknown"]
@@ -467,7 +489,7 @@ class AgentPoisonRequest(BaseModel):
     poison_count: int = Field(default=3, ge=1, le=10)
     top_k: int = Field(default=3, ge=1, le=10)
     iterations: int = Field(default=8, ge=1, le=50)
-    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
 
 
 class AgentPoisonMetrics(BaseModel):
@@ -513,7 +535,7 @@ class AgentPoisonBenchmarkRequest(BaseModel):
     repetitions: int = Field(default=1, ge=1, le=5)
     top_k: int = Field(default=3, ge=1, le=10)
     iterations: int = Field(default=8, ge=1, le=50)
-    benign_corpus_limit: int = Field(default=100, ge=10, le=1000)
+    benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
 
     @model_validator(mode="after")
     def validate_counts(self) -> "AgentPoisonBenchmarkRequest":

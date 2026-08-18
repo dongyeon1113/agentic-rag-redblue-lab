@@ -55,6 +55,7 @@ from services.orchestrator.evaluation import (
     evaluate_retrieval,
     normalize_text,
     phrase_present,
+    retrieval_stage_metrics,
 )
 from services.orchestrator.memory import ConversationMemory, memory_to_hit
 from services.orchestrator.poisoned_rag import (
@@ -295,7 +296,11 @@ async def _query_agents(
     request: OrchestratorQueryRequest,
 ) -> dict[str, Any]:
     selected_sources = list(dict.fromkeys(request.sources))
-    payload = {"query": request.query, "limit": request.limit}
+    payload = {
+        "query": request.query,
+        "limit": request.limit,
+        "defense": request.retrieval_defense,
+    }
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         responses = await asyncio.gather(
@@ -578,6 +583,7 @@ async def run_poisoned_rag_experiment(
         attack_target=request.attack_target,
         attack_document_ids=placeholder_ids or [f"poisonedrag-{run_id}-none"],
         allowed_untrusted_document_ids=[],
+        retrieval_defense=request.retrieval_defense,
     )
     baseline = _build_evaluation_response(
         baseline_request,
@@ -692,6 +698,7 @@ async def run_poisoned_rag_experiment(
         attack_target=request.attack_target,
         attack_document_ids=document_ids or [f"poisonedrag-{run_id}-none"],
         allowed_untrusted_document_ids=document_ids,
+        retrieval_defense=request.retrieval_defense,
     )
     attacked = _build_evaluation_response(
         attacked_request,
@@ -709,9 +716,16 @@ async def run_poisoned_rag_experiment(
         if precision + recall
         else 0.0
     )
+    retrieval_asr, retrieval_sr = retrieval_stage_metrics(
+        attacked.documents,
+        attack_document_ids=document_ids,
+        expected_answer=request.expected_answer,
+    )
     metrics = AttackDashboardMetrics(
         attack_success_rate=attack_success_rate(attacked.outcome),
         accuracy=answer_accuracy(attacked.outcome),
+        retrieval_attack_success_rate=retrieval_asr,
+        retrieval_success_rate=retrieval_sr,
         poison_in_top_k=poison_in_top_k,
         top_k=retrieved_count,
         retrieval_precision=round(precision, 4),
@@ -741,6 +755,7 @@ async def run_poisoned_rag_experiment(
     completed_at = datetime.now(timezone.utc)
     return PoisonedRAGResponse(
         run_id=run_id,
+        retrieval_defense=request.retrieval_defense,
         requested_poison_count=request.poison_count,
         generated_candidate_count=len(generated),
         verified_poison_count=verified_count,
@@ -800,111 +815,125 @@ async def run_poisoned_rag_benchmark(
     request: PoisonedRAGBenchmarkRequest,
 ) -> PoisonedRAGBenchmarkResponse:
     experiment_id = f"poisonedrag-{uuid4().hex[:12]}"
+    defenses = list(dict.fromkeys(request.retrieval_defenses))
     runs: list[PoisonedRAGResponse] = []
     failures: list[PoisonedRAGRunFailure] = []
-    for scenario in request.scenarios:
-        for repetition in range(1, request.repetitions + 1):
-            fixed_candidates: list[PoisonedRAGCandidate] | None = None
-            if request.fixed_poison_pool and max(request.poison_counts) > 0:
-                pool_started = perf_counter()
-                try:
-                    pool_run = await run_poisoned_rag_experiment(
-                        PoisonedRAGRequest(
-                            query=scenario.query,
-                            expected_answer=scenario.expected_answer,
-                            attack_target=scenario.attack_target,
-                            poison_count=max(request.poison_counts),
-                            top_k=request.top_k,
-                            max_generation_trials=request.max_generation_trials,
-                            passage_word_count=request.passage_word_count,
-                            generation_temperature=request.generation_temperature,
-                            cleanup_before_run=True,
-                            candidate_multiplier=request.candidate_multiplier,
+    for defense in defenses:
+        for scenario in request.scenarios:
+            for repetition in range(1, request.repetitions + 1):
+                fixed_candidates: list[PoisonedRAGCandidate] | None = None
+                if request.fixed_poison_pool and max(request.poison_counts) > 0:
+                    pool_started = perf_counter()
+                    try:
+                        pool_run = await run_poisoned_rag_experiment(
+                            PoisonedRAGRequest(
+                                query=scenario.query,
+                                expected_answer=scenario.expected_answer,
+                                attack_target=scenario.attack_target,
+                                poison_count=max(request.poison_counts),
+                                top_k=request.top_k,
+                                max_generation_trials=request.max_generation_trials,
+                                passage_word_count=request.passage_word_count,
+                                generation_temperature=request.generation_temperature,
+                                cleanup_before_run=True,
+                                retrieval_defense=defense,
+                                candidate_multiplier=request.candidate_multiplier,
+                            )
                         )
+                    except Exception as exc:
+                        detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                        for poison_count in request.poison_counts:
+                            failures.append(PoisonedRAGRunFailure(
+                                scenario_name=scenario.name,
+                                retrieval_defense=defense,
+                                poison_count=poison_count,
+                                repetition=repetition,
+                                stage="generation",
+                                error_type=type(exc).__name__,
+                                detail=str(detail)[:1000],
+                                elapsed_seconds=round(perf_counter() - pool_started, 3),
+                            ))
+                        continue
+                    fixed_candidates = sorted(
+                        (item for item in pool_run.generated_documents if item.selected),
+                        key=lambda item: (-(item.selection_score or 0.0), item.document_id),
                     )
-                except Exception as exc:
-                    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                    for poison_count in request.poison_counts:
-                        failures.append(PoisonedRAGRunFailure(
-                            scenario_name=scenario.name,
-                            poison_count=poison_count,
-                            repetition=repetition,
-                            stage="generation",
-                            error_type=type(exc).__name__,
-                            detail=str(detail)[:1000],
-                            elapsed_seconds=round(perf_counter() - pool_started, 3),
-                        ))
-                    continue
-                fixed_candidates = sorted(
-                    (item for item in pool_run.generated_documents if item.selected),
-                    key=lambda item: (-(item.selection_score or 0.0), item.document_id),
-                )
-            for poison_count in request.poison_counts:
-                attempt_started = perf_counter()
-                try:
-                    run = await run_poisoned_rag_experiment(
-                        PoisonedRAGRequest(
-                            query=scenario.query,
-                            expected_answer=scenario.expected_answer,
-                            attack_target=scenario.attack_target,
-                            poison_count=poison_count,
-                            top_k=request.top_k,
-                            max_generation_trials=request.max_generation_trials,
-                            passage_word_count=request.passage_word_count,
-                            generation_temperature=request.generation_temperature,
-                            cleanup_before_run=True,
-                            candidate_multiplier=(1 if fixed_candidates is not None else request.candidate_multiplier),
-                            fixed_candidates=fixed_candidates,
+                for poison_count in request.poison_counts:
+                    attempt_started = perf_counter()
+                    try:
+                        run = await run_poisoned_rag_experiment(
+                            PoisonedRAGRequest(
+                                query=scenario.query,
+                                expected_answer=scenario.expected_answer,
+                                attack_target=scenario.attack_target,
+                                poison_count=poison_count,
+                                top_k=request.top_k,
+                                max_generation_trials=request.max_generation_trials,
+                                passage_word_count=request.passage_word_count,
+                                generation_temperature=request.generation_temperature,
+                                cleanup_before_run=True,
+                                retrieval_defense=defense,
+                                candidate_multiplier=(1 if fixed_candidates is not None else request.candidate_multiplier),
+                                fixed_candidates=fixed_candidates,
+                            )
                         )
-                    )
-                except Exception as exc:
-                    detail = (
-                        exc.detail
-                        if isinstance(exc, HTTPException)
-                        else "Unexpected internal error; inspect restricted server logs."
-                    )
-                    detail_text = str(detail)[:1000]
-                    stage = "generation" if "generation failed" in detail_text.casefold() else "unknown"
-                    failures.append(
-                        PoisonedRAGRunFailure(
-                            scenario_name=scenario.name,
-                            poison_count=poison_count,
-                            repetition=repetition,
-                            stage=stage,
-                            error_type=type(exc).__name__,
-                            detail=detail_text,
-                            elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                    except Exception as exc:
+                        detail = (
+                            exc.detail
+                            if isinstance(exc, HTTPException)
+                            else "Unexpected internal error; inspect restricted server logs."
                         )
-                    )
-                    continue
-                run.scenario_name = scenario.name
-                runs.append(run)
+                        detail_text = str(detail)[:1000]
+                        stage = "generation" if "generation failed" in detail_text.casefold() else "unknown"
+                        failures.append(
+                            PoisonedRAGRunFailure(
+                                scenario_name=scenario.name,
+                                retrieval_defense=defense,
+                                poison_count=poison_count,
+                                repetition=repetition,
+                                stage=stage,
+                                error_type=type(exc).__name__,
+                                detail=detail_text,
+                                elapsed_seconds=round(perf_counter() - attempt_started, 3),
+                            )
+                        )
+                        continue
+                    run.scenario_name = scenario.name
+                    runs.append(run)
+
 
     points: list[PoisonedRAGBenchmarkPoint] = []
-    for poison_count in request.poison_counts:
-        selected = [
-            run for run in runs if run.requested_poison_count == poison_count
-        ]
-        selected_failures = [
-            failure for failure in failures if failure.poison_count == poison_count
-        ]
-        points.append(
-            PoisonedRAGBenchmarkPoint(
-                poison_count=poison_count,
-                trials=len(selected) + len(selected_failures),
-                successful_trials=len(selected),
-                failed_trials=len(selected_failures),
-                attack_success_rate=_mean([run.metrics.attack_success_rate for run in selected]),
-                accuracy=_mean([run.metrics.accuracy for run in selected]),
-                retrieval_precision=_mean([run.metrics.retrieval_precision for run in selected]),
-                retrieval_recall=_mean([run.metrics.retrieval_recall for run in selected]),
-                retrieval_f1=_mean([run.metrics.retrieval_f1 for run in selected]),
-                average_poison_in_top_k=_mean([float(run.metrics.poison_in_top_k) for run in selected]),
-                average_generation_queries=_mean([float(run.metrics.generation_queries) for run in selected]),
-                average_generation_seconds=_mean([run.metrics.generation_seconds for run in selected]),
-                average_total_seconds=_mean([run.metrics.total_seconds for run in selected]),
+    for defense in defenses:
+        for poison_count in request.poison_counts:
+            selected = [
+                run for run in runs
+                if run.requested_poison_count == poison_count
+                and run.retrieval_defense == defense
+            ]
+            selected_failures = [
+                failure for failure in failures if failure.poison_count == poison_count
+                and failure.retrieval_defense == defense
+            ]
+            points.append(
+                PoisonedRAGBenchmarkPoint(
+                    retrieval_defense=defense,
+                    poison_count=poison_count,
+                    trials=len(selected) + len(selected_failures),
+                    successful_trials=len(selected),
+                    failed_trials=len(selected_failures),
+                    attack_success_rate=_mean([run.metrics.attack_success_rate for run in selected]),
+                    accuracy=_mean([run.metrics.accuracy for run in selected]),
+                    retrieval_attack_success_rate=_mean([run.metrics.retrieval_attack_success_rate for run in selected]),
+                    retrieval_success_rate=_mean([run.metrics.retrieval_success_rate for run in selected]),
+                    retrieval_precision=_mean([run.metrics.retrieval_precision for run in selected]),
+                    retrieval_recall=_mean([run.metrics.retrieval_recall for run in selected]),
+                    retrieval_f1=_mean([run.metrics.retrieval_f1 for run in selected]),
+                    average_poison_in_top_k=_mean([float(run.metrics.poison_in_top_k) for run in selected]),
+                    average_generation_queries=_mean([float(run.metrics.generation_queries) for run in selected]),
+                    average_generation_seconds=_mean([run.metrics.generation_seconds for run in selected]),
+                    average_total_seconds=_mean([run.metrics.total_seconds for run in selected]),
+                )
             )
-        )
 
     result = PoisonedRAGBenchmarkResponse(
         experiment_id=experiment_id,

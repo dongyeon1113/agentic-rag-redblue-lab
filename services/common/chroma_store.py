@@ -7,6 +7,13 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
 from services.common.embeddings import DeterministicHashEmbeddings
+from services.common.ragpart import (
+    RagPartConfig,
+    combination_count,
+    combination_vectors,
+    majority_vote,
+    partition_text,
+)
 from services.common.schemas import SearchHit
 from services.common.search import load_json_documents
 
@@ -19,15 +26,24 @@ class ChromaDocumentStore:
         collection_name: str,
         persist_directory: Path | None = None,
         embedding: Embeddings | None = None,
+        ragpart: RagPartConfig | None = None,
     ) -> None:
         self.data_file = data_file
         self.embedding = embedding or DeterministicHashEmbeddings()
+        self.ragpart = ragpart or RagPartConfig()
+        persist = str(persist_directory) if persist_directory is not None else None
         self.vector_store = Chroma(
             collection_name=collection_name,
             embedding_function=self.embedding,
-            persist_directory=(
-                str(persist_directory) if persist_directory is not None else None
-            ),
+            persist_directory=persist,
+        )
+        # RAGPart keeps C(N, k) mean-pooled fragment vectors per document in a
+        # side collection. Only ids and metadata live here; hit text is read
+        # back from the primary collection so passages are not duplicated.
+        self._ragpart_store = Chroma(
+            collection_name=f"{collection_name}-ragpart",
+            embedding_function=self.embedding,
+            persist_directory=persist,
         )
         self._index_documents()
 
@@ -84,6 +100,114 @@ class ChromaDocumentStore:
                 documents=documents[start:end],
                 ids=[record["id"] for record in pending_records[start:end]],
             )
+        for record in pending_records:
+            self._index_ragpart(record["id"], record["text"])
+
+    def _index_ragpart(self, document_id: str, text: str) -> None:
+        # Building the side index costs `fragments` embedding calls per
+        # document, so it stays opt-in: on the full NQ corpus that is hundreds
+        # of thousands of calls against the embedding server at startup.
+        if not self.ragpart.enabled:
+            return
+        fragments = partition_text(text, self.ragpart.fragments)
+        vectors = combination_vectors(
+            self.embedding.embed_documents(fragments),
+            self.ragpart.combination_size,
+        )
+        self._ragpart_store._collection.upsert(
+            ids=[f"{document_id}#c{index}" for index in range(len(vectors))],
+            embeddings=vectors,
+            metadatas=[
+                {"document_id": document_id, "combo_index": index}
+                for index in range(len(vectors))
+            ],
+        )
+
+    def _delete_ragpart(self, document_ids: list[str]) -> None:
+        if document_ids:
+            self._ragpart_store._collection.delete(
+                where={"document_id": {"$in": document_ids}}
+            )
+
+    def search_ragpart(self, query: str, limit: int) -> list[SearchHit]:
+        """RAGPart retrieval: per-combination top-p, then majority vote.
+
+        Each combination index is searched as its own database, exactly as in
+        the paper. Ranking on the mean combination score instead would remove
+        the defense, because mean pooling does not lower a poisoned document's
+        score under this embedding -- only its combination coverage drops.
+        """
+        if not self.ragpart.enabled:
+            raise RuntimeError(
+                "RAGPart index is not built. Set RAGPART_ENABLED=true and "
+                "reindex the collection before requesting this defense."
+            )
+        query_vector = self.embedding.embed_query(query)
+        ranked_sets: list[list[tuple[str, float]]] = []
+        for combo_index in range(
+            combination_count(
+                self.ragpart.fragments,
+                self.ragpart.combination_size,
+            )
+        ):
+            response = self._ragpart_store._collection.query(
+                query_embeddings=[query_vector],
+                n_results=limit,
+                where={"combo_index": combo_index},
+                include=["metadatas", "distances"],
+            )
+            metadatas = (response.get("metadatas") or [[]])[0]
+            distances = (response.get("distances") or [[]])[0]
+            ranked_sets.append(
+                [
+                    (str(metadata["document_id"]), self._to_score(distance))
+                    for metadata, distance in zip(
+                        metadatas, distances, strict=True
+                    )
+                ]
+            )
+
+        voted = majority_vote(ranked_sets, limit)
+        return self._hits_by_id(
+            {document_id: score for document_id, score, _ in voted}
+        )
+
+    def _hits_by_id(self, scores: dict[str, float]) -> list[SearchHit]:
+        if not scores:
+            return []
+        records = self.vector_store.get(
+            ids=list(scores),
+            include=["metadatas", "documents"],
+        )
+        by_id = {
+            str(metadata["document_id"]): (metadata, text)
+            for metadata, text in zip(
+                records.get("metadatas", []),
+                records.get("documents", []),
+                strict=True,
+            )
+        }
+        hits: list[SearchHit] = []
+        for document_id, score in scores.items():
+            if document_id not in by_id:
+                continue
+            metadata, text = by_id[document_id]
+            hits.append(
+                SearchHit(
+                    document_id=document_id,
+                    source=str(metadata["source"]),
+                    trust=str(metadata.get("trust", "unknown")),
+                    tags=self._decode_tags(metadata.get("tags", "[]")),
+                    text=text,
+                    score=score,
+                )
+            )
+        return hits
+
+    @staticmethod
+    def _to_score(distance: float) -> float:
+        # Chroma returns a distance where a lower value is a closer match.
+        return round(1.0 / (1.0 + max(float(distance), 0.0)), 6)
 
     def search(self, query: str, limit: int) -> list[SearchHit]:
         results = self.vector_store.similarity_search_with_score(query, k=limit)
@@ -130,6 +254,7 @@ class ChromaDocumentStore:
             ],
             ids=[document_id],
         )
+        self._index_ragpart(document_id, text)
 
     def contains(self, document_id: str) -> bool:
         return bool(self.vector_store.get(ids=[document_id]).get("ids", []))
@@ -155,6 +280,7 @@ class ChromaDocumentStore:
         document_ids = [str(item) for item in records.get("ids", [])]
         if document_ids:
             self.vector_store.delete(ids=document_ids)
+            self._delete_ragpart(document_ids)
         return len(document_ids)
 
     def delete_untrusted_document(self, document_id: str) -> bool:
@@ -170,6 +296,7 @@ class ChromaDocumentStore:
         if metadata.get("trust") != "untrusted":
             raise ValueError("Only untrusted experiment documents can be deleted")
         self.vector_store.delete(ids=[document_id])
+        self._delete_ragpart([document_id])
         return True
 
     @staticmethod
