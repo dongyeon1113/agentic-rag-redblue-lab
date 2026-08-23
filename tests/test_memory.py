@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import services.orchestrator.app as orchestrator_module
+from services.common.schemas import OrchestratorAnswerRequest
 from services.orchestrator.app import app as orchestrator_app
 from services.orchestrator.memory import ConversationMemory
 
@@ -163,3 +164,13 @@ def test_memory_endpoints_list_and_reset(monkeypatch, tmp_path: Path) -> None:
     assert listed.json()["count"] == 1
     assert cleared.json()["deleted_count"] == 1
     assert cleared.json()["remaining_count"] == 0
+
+
+def test_answer_requests_without_session_id_do_not_share_a_memory_bucket() -> None:
+    # session_id used to default to the fixed string "default", so any two
+    # callers who both omitted it landed in the same memory bucket and could
+    # recall each other's Q&A history.
+    first = OrchestratorAnswerRequest(query="q1")
+    second = OrchestratorAnswerRequest(query="q2")
+
+    assert first.session_id != second.session_id

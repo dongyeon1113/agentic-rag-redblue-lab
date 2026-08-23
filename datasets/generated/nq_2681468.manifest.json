@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-23T06:10:42.715652+00:00",
+  "dataset": "BEIR Natural Questions",
+  "selection": {
+    "seed": 12,
+    "document_count": 2681468,
+    "source_document_count": 2681468,
+    "target_query_count": 100,
+    "required_qrel_document_count": 118,
+    "all_target_qrels_included": true
+  },
+  "sources": {
+    "corpus": {
+      "url": "https://huggingface.co/datasets/BeIR/nq/resolve/main/corpus/corpus-00000-of-00001.parquet",
+      "sha256": "b7e8d5a99cfe94a1a0f175e274ae6d8f33fe0630f1ab529cd8537e82bd0aaa9e"
+    },
+    "qrels": {
+      "url": "https://huggingface.co/datasets/BeIR/nq-qrels/resolve/main/test.tsv",
+      "sha256": "6df0cd2cbbe88504b64c68f21e946a759b62c4d864225720cec256f0196e2210"
+    },
+    "targets": {
+      "url": "https://github.com/SecAI-Lab/RAGDefender/blob/ba2a17efba165d45409114df2d70b030ade1e1b8/artifacts/results/target_queries/nq.json",
+      "sha256": "398d2427a73458c52bbb98ff65dec789c0a2837f48c6c85e5f1986b14334e63d"
+    }
+  },
+  "outputs": {
+    "corpus": {
+      "path": "datasets/generated/nq_2681468.json",
+      "sha256": "6861a6d0b0dacd0440e17beae24e609f84f3c6f0d5df8e35a4dd7adab8cc385d"
+    },
+    "target_queries": {
+      "path": "datasets/experiments/nq_target_queries.json",
+      "sha256": "fdb5cc6eb3483a5ee15a4b20b7e57fbf817693d3133588ebb21bd40f0872634d"
+    }
+  }
+}

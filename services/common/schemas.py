@@ -1,4 +1,5 @@
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -48,8 +49,13 @@ class OrchestratorAnswerRequest(OrchestratorQueryRequest):
         default=None,
         max_length=20,
     )
+    # No shared default: a caller that omits session_id gets a fresh,
+    # unique one instead of landing in the same memory bucket as every
+    # other caller that also omitted it (that previously meant unrelated
+    # callers' Q&A history, including answers generated under a poisoned
+    # context, could be recalled into each other's later turns).
     session_id: str = Field(
-        default="default",
+        default_factory=lambda: uuid4().hex,
         min_length=1,
         max_length=120,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
