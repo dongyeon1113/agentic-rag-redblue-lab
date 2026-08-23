@@ -60,7 +60,37 @@ services:
       OLLAMA_HOST: http://ollama:11434
     command:
       - pull
-      - ${OLLAMA_MODEL:-qwen3:8b}
+      - qwen3:8b
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama-llama32-3b-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    runtime: runc
+    restart: "no"
+    networks:
+      - agent-network
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command:
+      - pull
+      - llama3.2:3b
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama-llama32-1b-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    runtime: runc
+    restart: "no"
+    networks:
+      - agent-network
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command:
+      - pull
+      - llama3.2:1b
     depends_on:
       ollama:
         condition: service_healthy
@@ -80,8 +110,42 @@ services:
       ollama:
         condition: service_healthy
 
+  result-init:
+    <<: *service-defaults
+    user: root
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - chown app /app/result && chmod 0775 /app/result
+    volumes:
+      - ./result:/app/result
+
+  mock-data-init:
+    <<: *service-defaults
+    user: root
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - chown -R app /app/mock_data && chmod 0775 /app/mock_data && chmod 0664 /app/mock_data/*.json
+    volumes:
+      - ./mock_data:/app/mock_data
+
+  gmail-dummy-init:
+    <<: *service-defaults
+    user: root
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - chown app /app/datasets/sample/gmail_dummy.json && chmod 0664 /app/datasets/sample/gmail_dummy.json
+    volumes:
+      - ./datasets/sample:/app/datasets/sample
+
   orchestrator:
     <<: *service-defaults
+    runtime: nvidia
     command:
       - uvicorn
       - services.orchestrator.app:app
@@ -103,15 +167,25 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HOME: /app/data/huggingface
       PROMPT_GUARD_MODEL: ${PROMPT_GUARD_MODEL:-meta-llama/Prompt-Guard-86M}
-      PROMPT_GUARD_DEVICE: ${PROMPT_GUARD_DEVICE:-cpu}
+      PROMPT_GUARD_DEVICE: ${PROMPT_GUARD_DEVICE:-cuda}
       PROMPT_GUARD_THRESHOLD: ${PROMPT_GUARD_THRESHOLD:-0.90}
-      EXPERIMENT_RESULTS_DIR: /app/data/experiments
+      EXPERIMENT_RESULTS_DIR: /app/result
       EXPERIMENT_SCENARIOS_FILE: /app/datasets/experiments/nq_target_queries.json
       LOCAL_DB_AGENT_URL: http://local-db-agent:8000
       GMAIL_AGENT_URL: http://gmail-agent:8000
       DRIVE_AGENT_URL: http://drive-agent:8000
     depends_on:
+      result-init:
+        condition: service_completed_successfully
+      mock-data-init:
+        condition: service_completed_successfully
+      gmail-dummy-init:
+        condition: service_completed_successfully
       ollama-model-init:
+        condition: service_completed_successfully
+      ollama-llama32-3b-init:
+        condition: service_completed_successfully
+      ollama-llama32-1b-init:
         condition: service_completed_successfully
       local-db-agent:
         condition: service_healthy
@@ -120,8 +194,18 @@ services:
       drive-agent:
         condition: service_healthy
     volumes:
-      - experiment-results:/app/data/experiments
+      - ./result:/app/result
+      - ./mock_data:/app/mock_data
+      - ./datasets/sample:/app/datasets/sample
       - huggingface-cache:/app/data/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
     healthcheck: *healthcheck
 
   local-db-agent:
@@ -152,7 +236,9 @@ services:
     depends_on:
       ollama-embedding-model-init:
         condition: service_completed_successfully
-    healthcheck: *healthcheck
+    healthcheck:
+      <<: *healthcheck
+      start_period: ${LOCAL_DB_HEALTH_START_PERIOD:-30m}
 
   gmail-agent:
     <<: *service-defaults
@@ -176,7 +262,11 @@ services:
       GMAIL_QUERY: ${GMAIL_QUERY:-in:anywhere}
       GMAIL_MAX_MESSAGES: ${GMAIL_MAX_MESSAGES:-100}
       GOOGLE_GMAIL_TOKEN_FILE: /run/secrets/google-gmail-token.json
+    depends_on:
+      gmail-dummy-init:
+        condition: service_completed_successfully
     volumes:
+      - ./datasets/sample:/app/datasets/sample
       - gmail-chroma:/app/data/chroma
     healthcheck: *healthcheck
 
@@ -214,5 +304,4 @@ volumes:
   gmail-chroma:
   drive-chroma:
   ollama-models:
-  experiment-results:
   huggingface-cache:

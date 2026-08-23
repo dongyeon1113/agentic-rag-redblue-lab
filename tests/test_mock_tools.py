@@ -1,14 +1,20 @@
 import asyncio
+import json
 
 from langchain_core.messages import AIMessage
 
 from services.orchestrator.mock_tools import (
     execute_mock_tool_call,
+    restore_mock_gmail_dummy,
     run_rag_with_mock_tools,
+    snapshot_mock_gmail_dummy,
 )
 
 
-def test_mock_tool_call_is_simulated_and_audited() -> None:
+def test_mock_send_email_appends_to_gmail_dummy(monkeypatch, tmp_path) -> None:
+    gmail_path = tmp_path / "gmail_dummy.json"
+    gmail_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("MOCK_GMAIL_DUMMY_FILE", str(gmail_path))
     audit = execute_mock_tool_call(
         {
             "id": "call-1",
@@ -20,11 +26,79 @@ def test_mock_tool_call_is_simulated_and_audited() -> None:
             },
         }
     )
-
     assert audit["status"] == "simulated"
-    assert audit["name"] == "mock_send_email"
-    assert audit["arguments"]["recipient"] == "attacker@example.test"
-    assert "no email was sent" in audit["result"]
+    result = json.loads(audit["result"])
+    assert result["delivered"] is True
+    messages = json.loads(gmail_path.read_text(encoding="utf-8"))
+    assert messages[0]["body"] == "synthetic payload"
+    assert messages[0]["source"] == "dummy-gmail"
+    assert messages[0]["text"].endswith("synthetic payload")
+
+
+def test_mock_gmail_snapshot_restore_discards_new_messages(
+    monkeypatch, tmp_path
+) -> None:
+    gmail_path = tmp_path / "gmail_dummy.json"
+    original = [{
+        "id": "gmail-dummy-existing", "source": "dummy-gmail",
+        "trust": "trusted", "text": "keep",
+    }]
+    gmail_path.write_text(json.dumps(original), encoding="utf-8")
+    monkeypatch.setenv("MOCK_GMAIL_DUMMY_FILE", str(gmail_path))
+
+    snapshot = snapshot_mock_gmail_dummy()
+    execute_mock_tool_call({
+        "id": "call-new",
+        "name": "mock_send_email",
+        "args": {
+            "recipient": "user@example.test",
+            "subject": "temporary",
+            "body": "remove after experiment",
+        },
+    })
+    restore_mock_gmail_dummy(snapshot)
+
+    assert json.loads(gmail_path.read_text(encoding="utf-8")) == original
+
+
+def test_mock_read_secret_reads_fake_fixture(monkeypatch, tmp_path) -> None:
+    secret_path = tmp_path / "secrets.json"
+    secret_path.write_text(
+        '{"secrets": {"test_api_key": "fake-value"}}', encoding="utf-8"
+    )
+    monkeypatch.setenv("MOCK_SECRET_FILE", str(secret_path))
+    audit = execute_mock_tool_call(
+        {
+            "id": "call-secret",
+            "name": "mock_read_secret",
+            "args": {"secret_name": "test_api_key"},
+        }
+    )
+    result = json.loads(audit["result"])
+    assert audit["status"] == "simulated"
+    assert result["secret_value"] == "fake-value"
+    assert result["fake"] is True
+
+
+def test_mock_delete_document_selects_without_deleting(monkeypatch, tmp_path) -> None:
+    documents_path = tmp_path / "nq.json"
+    documents = [
+        {"id": "doc-cats", "text": "Cats are small domestic animals."},
+        {"id": "doc-email", "text": "SMTP transports email messages."},
+    ]
+    documents_path.write_text(json.dumps(documents), encoding="utf-8")
+    monkeypatch.setenv("MOCK_NQ_DOCUMENTS_FILE", str(documents_path))
+    audit = execute_mock_tool_call(
+        {
+            "id": "call-delete",
+            "name": "mock_delete_document",
+            "args": {"query": "Find the email SMTP document"},
+        }
+    )
+    result = json.loads(audit["result"])
+    assert result["selected_document_id"] == "doc-email"
+    assert result["deleted"] is False
+    assert json.loads(documents_path.read_text(encoding="utf-8")) == documents
 
 
 def test_unknown_tool_call_is_rejected() -> None:
@@ -54,7 +128,7 @@ class StubToolCallingModel:
                     {
                         "id": "call-3",
                         "name": "mock_delete_document",
-                        "args": {"document_id": "synthetic-document"},
+                        "args": {"query": "synthetic document"},
                     }
                 ],
             )
@@ -82,4 +156,4 @@ def test_tool_agent_runs_one_simulated_call_and_returns_answer() -> None:
     ]
     assert audits[0]["name"] == "mock_delete_document"
     assert audits[0]["status"] == "simulated"
-    assert "no document was deleted" in audits[0]["result"]
+    assert '"deleted": false' in audits[0]["result"]

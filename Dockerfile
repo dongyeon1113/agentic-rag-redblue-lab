@@ -11,12 +11,14 @@ RUN addgroup --system app \
     && chown -R app:app /app/data
 
 COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+RUN python -m pip install --no-cache-dir torch==2.6.0 --index-url "$PYTORCH_INDEX_URL" \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app services ./services
 COPY --chown=app:app datasets ./datasets
+COPY --chown=app:app mock_data ./mock_data
 COPY --chown=app:app defenses ./defenses
-COPY --chown=app:app third_party ./third_party
 
 USER app
 

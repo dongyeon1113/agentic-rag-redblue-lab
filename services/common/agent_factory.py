@@ -14,9 +14,12 @@ def create_search_agent(
     service_name: str,
     default_data_file: Path,
     default_search_backend: str = "lexical",
+    data_file_override: Path | None = None,
     sync_data_file: bool = False,
 ) -> FastAPI:
-    data_file = Path(os.getenv("DATA_FILE", str(default_data_file)))
+    data_file = data_file_override or Path(
+        os.getenv("DATA_FILE", str(default_data_file))
+    )
     search_backend = os.getenv("SEARCH_BACKEND", default_search_backend).lower()
     if search_backend == "lexical":
         store = JsonDocumentStore(data_file)

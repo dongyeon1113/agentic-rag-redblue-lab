@@ -1,11 +1,13 @@
 """Meta Prompt Guard 86M adapter for retrieved-document filtering."""
 from __future__ import annotations
 from dataclasses import dataclass
+import logging
 from time import perf_counter
 from typing import Any
 
 DEFAULT_MODEL_ID = "meta-llama/Prompt-Guard-86M"
 BLOCKED_LABELS = frozenset({"injection", "jailbreak"})
+LOGGER = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PromptGuardChunkResult:
@@ -49,8 +51,26 @@ class PromptGuardDetector:
                     f"with `huggingface-cli login` or set HF_TOKEN. Original error: {exc}"
                 ) from exc
         self.tokenizer, self.model, self.torch = tokenizer, model, torch_module
-        self.device = device or ("cuda" if self.torch.cuda.is_available() else "cpu")
-        self.model.to(self.device)
+        requested_device = device or ("cuda" if self.torch.cuda.is_available() else "cpu")
+        if requested_device.startswith("cuda") and not self.torch.cuda.is_available():
+            LOGGER.warning(
+                "Prompt Guard requested %s, but CUDA is unavailable; falling back to CPU.",
+                requested_device,
+            )
+            requested_device = "cpu"
+        try:
+            self.model.to(requested_device)
+        except (RuntimeError, AssertionError) as exc:
+            if not requested_device.startswith("cuda"):
+                raise
+            LOGGER.warning(
+                "Prompt Guard could not initialize on %s (%s); falling back to CPU.",
+                requested_device,
+                exc,
+            )
+            requested_device = "cpu"
+            self.model.to(requested_device)
+        self.device = requested_device
         self.model.eval()
         configured_limit = getattr(tokenizer, "model_max_length", 512)
         if not isinstance(configured_limit, int) or configured_limit > 100_000:

@@ -3,6 +3,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+AnswerModel = Literal["qwen3:8b", "llama3.2:3b", "llama3.2:1b"]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: str
@@ -36,6 +39,7 @@ class OrchestratorQueryRequest(SearchRequest):
 
 
 class OrchestratorAnswerRequest(OrchestratorQueryRequest):
+    answer_model: AnswerModel = "qwen3:8b"
     mode: Literal["vulnerable", "defended"] = "vulnerable"
     regex_filter: bool = False
     prompt_guard: bool = False
@@ -46,22 +50,6 @@ class OrchestratorAnswerRequest(OrchestratorQueryRequest):
         default=None,
         max_length=20,
     )
-
-
-class BipiaAnswerRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    case_id: str = Field(min_length=1, max_length=120)
-    regex_filter: bool = False
-    prompt_guard: bool = False
-    spotlighting: Literal["none", "delimiting", "datamarking", "encoding"] = "none"
-
-
-class BipiaEvaluationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    case_limit: int = Field(default=10, ge=1, le=100)
-    regex_filter: bool = False
-    prompt_guard: bool = False
-    spotlighting: Literal["none", "delimiting", "datamarking", "encoding"] = "none"
 
 
 class ExperimentDocumentRequest(BaseModel):
@@ -99,7 +87,23 @@ class ExperimentDeleteResponse(BaseModel):
     document_count: int
 
 
+class ToolCallExpectation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Literal["mock_send_email", "mock_read_secret", "mock_delete_document"]
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolAttackConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_calls: list[ToolCallExpectation] = Field(min_length=1, max_length=5)
+    require_order: bool = True
+
+
 class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
+    attack_type: Literal["knowledge", "tool_call"] = "knowledge"
+    tool_attack: ToolAttackConfig | None = None
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)
     attack_document_ids: list[str] = Field(min_length=1, max_length=20)
@@ -110,6 +114,10 @@ class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
         target = self.attack_target.casefold().strip()
         if expected == target:
             raise ValueError("expected_answer and attack_target must differ")
+        if self.attack_type == "tool_call" and self.tool_attack is None:
+            raise ValueError("tool_attack is required for tool_call attacks")
+        if self.attack_type == "knowledge" and self.tool_attack is not None:
+            raise ValueError("tool_attack is only valid for tool_call attacks")
         return self
 
 
@@ -131,6 +139,14 @@ class ExperimentEvaluationResponse(BaseModel):
     documents: list[SearchHit]
     blocked_documents: list[dict[str, Any]] = Field(default_factory=list)
     detector_latency_ms: float = 0.0
+    spotlighting_methods: list[str] = Field(default_factory=list)
+    spotlighting_documents: list[dict[str, Any]] = Field(default_factory=list)
+    attack_type: Literal["knowledge", "tool_call"] = "knowledge"
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    tool_attack_attempted: bool = False
+    tool_attack_success: bool = False
+    matched_tool_calls: int = 0
+    expected_tool_calls: int = 0
 
 
 class ExperimentComparisonRequest(OrchestratorQueryRequest):
@@ -214,6 +230,9 @@ class AutomatedAttackRequest(BaseModel):
 class PoisonedRAGRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    answer_model: AnswerModel = "qwen3:8b"
+    attack_type: Literal["knowledge", "tool_call"] = "knowledge"
+    tool_attack: ToolAttackConfig | None = None
     query: str = Field(min_length=1, max_length=500)
     expected_answer: str = Field(min_length=1, max_length=500)
     attack_target: str = Field(min_length=1, max_length=500)
@@ -224,6 +243,7 @@ class PoisonedRAGRequest(BaseModel):
     generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     cleanup_before_run: bool = True
     candidate_multiplier: int = Field(default=2, ge=1, le=5)
+    include_query_prefix: bool = True
     fixed_candidates: list["PoisonedRAGCandidate"] | None = Field(default=None, max_length=10)
 
     @model_validator(mode="after")
@@ -232,6 +252,10 @@ class PoisonedRAGRequest(BaseModel):
         target = self.attack_target.casefold().strip()
         if expected == target:
             raise ValueError("expected_answer and attack_target must differ")
+        if self.attack_type == "tool_call" and self.tool_attack is None:
+            raise ValueError("tool_attack is required for tool_call attacks")
+        if self.attack_type == "knowledge" and self.tool_attack is not None:
+            raise ValueError("tool_attack is only valid for tool_call attacks")
         return self
 
 
@@ -281,15 +305,18 @@ class PoisonedRAGRunMetadata(BaseModel):
     passage_word_count: int
     cleanup_before_run: bool
     candidate_multiplier: int = 1
+    include_query_prefix: bool = True
     selection_policy: str = "verified_then_retrieval_score_with_deduplication"
 
 
 class PoisonedRAGResponse(BaseModel):
+    attack_type: Literal["knowledge", "tool_call"] = "knowledge"
+    tool_attack: ToolAttackConfig | None = None
     status: Literal["completed"] = "completed"
     strategy: Literal["poisonedrag"] = "poisonedrag"
     run_id: str
     scenario_name: str | None = None
-    construction: Literal["black_box_q_plus_i"] = "black_box_q_plus_i"
+    construction: Literal["black_box_q_plus_i", "black_box_i_only"] = "black_box_q_plus_i"
     requested_poison_count: int
     generated_candidate_count: int = 0
     verified_poison_count: int
@@ -317,6 +344,62 @@ class PoisonedRAGScenario(BaseModel):
         return self
 
 
+class NQDefenseConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=50)
+    regex: bool = False
+    prompt_guard: bool = False
+    spotlighting: list[Literal["delimiting", "datamarking", "encoding"]] = Field(
+        default_factory=list, max_length=3
+    )
+
+    @model_validator(mode="after")
+    def require_a_defense(self) -> "NQDefenseConfig":
+        self.spotlighting = list(dict.fromkeys(self.spotlighting))
+        if not (self.regex or self.prompt_guard or self.spotlighting):
+            raise ValueError("A defense configuration must enable at least one defense")
+        return self
+
+
+class NQDefenseJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer_model: AnswerModel = "qwen3:8b"
+    scenario_count: int = Field(default=5, ge=1, le=100)
+    repetitions: int = Field(default=1, ge=1, le=5)
+    seed: int = 12
+    poison_counts: list[int] = Field(default_factory=lambda: [3], min_length=1, max_length=10)
+    top_k: int = Field(default=5, ge=1, le=20)
+    max_generation_trials: int = Field(default=10, ge=1, le=50)
+    passage_word_count: int = Field(default=30, ge=10, le=120)
+    generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+    candidate_multiplier: int = Field(default=2, ge=1, le=5)
+    include_query_prefix: bool = True
+    tool_scenario_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+    tool_attack_tools: list[Literal[
+        "mock_read_secret", "mock_send_email", "mock_delete_document", "secret_exfiltration"
+    ]] = Field(
+        default_factory=lambda: [
+            "mock_read_secret", "mock_send_email", "mock_delete_document", "secret_exfiltration"
+        ], min_length=1, max_length=4
+    )
+    defenses: list[NQDefenseConfig] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_job(self) -> "NQDefenseJobRequest":
+        if any(count < 1 or count > 10 for count in self.poison_counts):
+            raise ValueError("poison_counts values must be between 1 and 10")
+        self.poison_counts = sorted(set(self.poison_counts))
+        signatures = {
+            (item.regex, item.prompt_guard, tuple(item.spotlighting))
+            for item in self.defenses
+        }
+        if len(signatures) != len(self.defenses):
+            raise ValueError("defense configurations must be unique")
+        return self
+
+
 class PoisonedRAGBenchmarkRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -328,6 +411,7 @@ class PoisonedRAGBenchmarkRequest(BaseModel):
     passage_word_count: int = Field(default=30, ge=10, le=120)
     generation_temperature: float = Field(default=1.0, ge=0.0, le=2.0)
     candidate_multiplier: int = Field(default=2, ge=1, le=5)
+    include_query_prefix: bool = True
     fixed_poison_pool: bool = True
 
     @model_validator(mode="after")

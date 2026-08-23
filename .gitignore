@@ -254,3 +254,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Runtime benchmark artifacts
+result/*
+!result/.gitkeep
