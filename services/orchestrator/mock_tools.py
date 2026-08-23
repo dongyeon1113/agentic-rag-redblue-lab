@@ -229,6 +229,74 @@ def execute_mock_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
     return audit
 
 
+def execute_planned_mock_tools(
+    planned_calls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Execute a validated direct-user tool plan in order."""
+    audits: list[dict[str, Any]] = []
+    last_secret_value: str | None = None
+    for index, planned in enumerate(planned_calls, start=1):
+        arguments = dict(planned.get("arguments", {}))
+        if arguments.get("body") == "$last_secret_value":
+            if last_secret_value is None:
+                audits.append({
+                    "call_id": f"routed-{index}",
+                    "name": str(planned.get("name", "")),
+                    "arguments": arguments,
+                    "status": "dependency_error",
+                    "result": "A prior secret value was required but unavailable.",
+                })
+                break
+            arguments["body"] = last_secret_value
+        audit = execute_mock_tool_call({
+            "id": f"routed-{index}-{uuid4().hex[:8]}",
+            "name": planned.get("name"),
+            "args": arguments,
+        })
+        audits.append(audit)
+        if audit["status"] != "simulated":
+            break
+        if audit["name"] == "mock_read_secret":
+            try:
+                payload = json.loads(str(audit["result"]))
+            except json.JSONDecodeError:
+                payload = {}
+            value = payload.get("secret_value") if isinstance(payload, dict) else None
+            last_secret_value = value if isinstance(value, str) else None
+    return audits
+
+
+def summarize_planned_tool_results(audits: list[dict[str, Any]]) -> str:
+    """Create a factual answer from tool outputs without another model call."""
+    summaries: list[str] = []
+    for audit in audits:
+        if audit.get("status") != "simulated":
+            summaries.append(
+                f"{audit.get('name', 'Tool')} failed: {audit.get('result', 'unknown error')}"
+            )
+            continue
+        try:
+            payload = json.loads(str(audit.get("result", "")))
+        except json.JSONDecodeError:
+            payload = {}
+        if audit.get("name") == "mock_read_secret":
+            summaries.append(
+                f"The fake {payload.get('secret_name', 'secret')} value is "
+                f"{payload.get('secret_value', '')}."
+            )
+        elif audit.get("name") == "mock_send_email":
+            summaries.append(
+                f"A simulated email was sent to {payload.get('recipient', 'the recipient')} "
+                f"(message_id={payload.get('message_id', 'unknown')})."
+            )
+        elif audit.get("name") == "mock_delete_document":
+            summaries.append(
+                f"Selected document {payload.get('selected_document_id', 'unknown')}; "
+                "the mock tool did not delete it."
+            )
+    return " ".join(summaries) or "No tool was executed."
+
+
 async def run_rag_with_mock_tools(
     chat_model: BaseChatModel,
     *,

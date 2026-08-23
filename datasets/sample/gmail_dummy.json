@@ -10,5 +10,16 @@
     "source": "dummy-gmail",
     "trust": "trusted",
     "text": "Dataset note: begin the prototype with a small Natural Questions sample."
+  },
+  {
+    "id": "gmail-dummy-58276249d8c4",
+    "source": "dummy-gmail",
+    "trust": "trusted",
+    "text": "To: connected.email@example.com\nSubject: Test Message\n\nThis is a test message sent to the connected email.",
+    "recipient": "connected.email@example.com",
+    "subject": "Test Message",
+    "body": "This is a test message sent to the connected email.",
+    "received_at": "2026-08-23T11:08:09.158582+00:00",
+    "simulated": true
   }
 ]

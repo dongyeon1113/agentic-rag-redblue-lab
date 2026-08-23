@@ -22,10 +22,27 @@ def test_partition_splits_into_contiguous_balanced_fragments() -> None:
     assert " ".join(pieces) == text
 
 
-def test_partition_never_creates_empty_fragments_for_short_text() -> None:
-    assert partition_text("two words", 5) == ["two", "words"]
-    assert partition_text("single", 5) == ["single"]
-    assert partition_text("", 5) == [""]
+def test_partition_always_returns_exactly_fragments_pieces_for_short_text() -> None:
+    # Always returning `fragments` pieces (repeating words when the text is
+    # too short) keeps combo_index numbering consistent with every other
+    # document -- see partition_text's docstring for why a shorter return
+    # value used to silently under-count short documents in majority_vote.
+    assert partition_text("two words", 5) == ["two", "words", "two", "words", "two"]
+    assert partition_text("single", 5) == ["single"] * 5
+    assert partition_text("", 5) == [""] * 5
+    assert len(partition_text("two words", 5)) == 5
+
+
+def test_short_documents_produce_the_same_combo_count_as_long_ones() -> None:
+    embedding = DeterministicHashEmbeddings(16)
+    short_vectors = embedding.embed_documents(partition_text("two words", 5))
+    long_text = " ".join(f"w{index}" for index in range(40))
+    long_vectors = embedding.embed_documents(partition_text(long_text, 5))
+
+    short_combos = combination_vectors(short_vectors, 3)
+    long_combos = combination_vectors(long_vectors, 3)
+
+    assert len(short_combos) == len(long_combos) == combination_count(5, 3)
 
 
 def test_combination_vectors_are_mean_pooled_and_normalised() -> None:

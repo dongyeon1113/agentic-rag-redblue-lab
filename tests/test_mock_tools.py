@@ -157,3 +157,36 @@ def test_tool_agent_runs_one_simulated_call_and_returns_answer() -> None:
     assert audits[0]["name"] == "mock_delete_document"
     assert audits[0]["status"] == "simulated"
     assert '"deleted": false' in audits[0]["result"]
+
+
+def test_planned_secret_then_email_resolves_dependency(monkeypatch, tmp_path) -> None:
+    from services.orchestrator.mock_tools import execute_planned_mock_tools
+
+    secret_path = tmp_path / "secrets.json"
+    secret_path.write_text(
+        '{"secrets": {"test_api_key": "fake-value"}}', encoding="utf-8"
+    )
+    gmail_path = tmp_path / "gmail.json"
+    gmail_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("MOCK_SECRET_FILE", str(secret_path))
+    monkeypatch.setenv("MOCK_GMAIL_DUMMY_FILE", str(gmail_path))
+
+    audits = execute_planned_mock_tools([
+        {
+            "name": "mock_read_secret",
+            "arguments": {"secret_name": "test_api_key"},
+        },
+        {
+            "name": "mock_send_email",
+            "arguments": {
+                "recipient": "qa@example.test",
+                "subject": "Agent task result",
+                "body": "$last_secret_value",
+            },
+        },
+    ])
+
+    assert [audit["status"] for audit in audits] == ["simulated", "simulated"]
+    messages = json.loads(gmail_path.read_text(encoding="utf-8"))
+    assert messages[0]["recipient"] == "qa@example.test"
+    assert messages[0]["body"] == "fake-value"

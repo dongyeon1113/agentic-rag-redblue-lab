@@ -51,22 +51,32 @@ from services.common.schemas import (
 )
 from services.common.embeddings import create_embeddings
 from services.common.search import load_json_documents
-from services.orchestrator.agent_poison import optimize_trigger, rank_memory, retrieval_success
+from services.orchestrator.agent_poison import (
+    craft_poison_value,
+    embed_memory,
+    optimize_trigger,
+    rank_embedded_memory,
+    retrieval_success,
+)
 from services.orchestrator.evaluation import (
     answer_accuracy,
+    answers_agree,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
     evaluate_tool_attack,
     normalize_text,
+    phrase_adopted,
     phrase_present,
     retrieval_stage_metrics,
 )
 from services.orchestrator.memory import ConversationMemory, memory_to_hit
 from services.orchestrator.mock_tools import (
+    execute_planned_mock_tools,
     restore_mock_gmail_dummy,
     run_rag_with_mock_tools,
     snapshot_mock_gmail_dummy,
+    summarize_planned_tool_results,
 )
 from services.orchestrator.poisoned_rag import (
     GeneratedPoison,
@@ -75,6 +85,7 @@ from services.orchestrator.poisoned_rag import (
     generate_tool_poison_set,
     select_diverse_candidates,
 )
+from services.orchestrator.router import RouteDecision, route_request
 from services.orchestrator.rag import (
     DEFENDED_SYSTEM_PROMPT,
     VULNERABLE_SYSTEM_PROMPT,
@@ -130,6 +141,18 @@ AGENT_MEMORY_FILE = Path(
     os.getenv("AGENT_MEMORY_FILE", "/tmp/agent-memory/memory.jsonl")
 )
 MEMORY_RECALL_LIMIT = int(os.getenv("MEMORY_RECALL_LIMIT", "3"))
+AGENT_POISON_CORPUS_FILE = Path(
+    os.getenv(
+        "AGENT_POISON_CORPUS_FILE",
+        # The full 2.68M-document corpus (datasets/generated/nq_2681468.json)
+        # is too large to commit to git (~1.6GB; GitHub rejects files over
+        # 100MB), so it isn't in the repo -- deployments that have it placed
+        # out-of-band point AGENT_POISON_CORPUS_FILE at it instead. This
+        # default is the smaller, git-tracked corpus so a fresh clone works
+        # without any extra setup.
+        str(Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"),
+    )
+)
 
 
 @lru_cache(maxsize=1)
@@ -454,12 +477,103 @@ async def answer(
     return await _generate_answer(request, spotlighting_methods=methods)
 
 
+def _direct_answer_payload(
+    request: OrchestratorAnswerRequest,
+    route: RouteDecision,
+    *,
+    answer: str,
+    tool_calls: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    if request.use_memory:
+        _memory().append(
+            session_id=request.session_id,
+            query=request.query,
+            answer=answer,
+            trust="trusted",
+        )
+    return {
+        "service": SERVICE_NAME,
+        "query": request.query,
+        "model": request.answer_model,
+        "mode": request.mode,
+        "intent": route.intent,
+        "route_confidence": route.confidence,
+        "route_reason": route.reason,
+        "retrieval_skipped": True,
+        "planned_tool_calls": [
+            {"name": item.name, "arguments": item.arguments}
+            for item in route.tool_calls
+        ],
+        "regex_filter": request.regex_filter,
+        "prompt_guard": request.prompt_guard,
+        "detector_latency_ms": 0.0,
+        "mock_tools_enabled": request.enable_mock_tools,
+        "tool_calls": tool_calls or [],
+        "spotlighting_methods": [],
+        "context_capacity": request.context_capacity or RAG_CONTEXT_LIMIT,
+        "include_trusted_documents": request.include_trusted_documents,
+        "answer": answer,
+        "documents": [],
+        "blocked_documents": [],
+        "spotlighting_documents": [],
+        "results": {},
+        "memory": [],
+    }
+
+
+def _conversation_answer(query: str) -> str:
+    folded = query.casefold()
+    if any(item in folded for item in ("bye", "goodbye")) or "안녕히" in query:
+        return "Goodbye! Feel free to return whenever you need help."
+    if any(item in query for item in ("안녕", "반가")):
+        return "안녕하세요! 무엇을 도와드릴까요?"
+    if any(item in query for item in ("고마", "감사")):
+        return "도움이 되어 기쁩니다. 다른 요청이 있으면 말씀해 주세요."
+    if any(item in folded for item in ("thank", "thanks")):
+        return "You are welcome! Let me know what else you need."
+    return "Hello! How can I help you?"
+
+
 async def _generate_answer(
     request: OrchestratorAnswerRequest,
     *,
     spotlighting_methods: list[str] | None = None,
 ) -> dict[str, Any]:
     selected_spotlighting_methods = spotlighting_methods or []
+    route = route_request(
+        request.query, tools_enabled=request.enable_mock_tools
+    )
+    if route.intent == "conversation":
+        return _direct_answer_payload(
+            request, route, answer=_conversation_answer(request.query)
+        )
+    if route.intent == "tool_task" and not route.requires_retrieval:
+        if not request.enable_mock_tools:
+            return _direct_answer_payload(
+                request,
+                route,
+                answer=(
+                    "This request requires a local mock tool, but tools are disabled. "
+                    "Enable tools in the CLI before retrying."
+                ),
+            )
+        if not route.tool_calls:
+            return _direct_answer_payload(
+                request,
+                route,
+                answer="I need the required tool arguments before I can perform that task.",
+            )
+        planned = [
+            {"name": item.name, "arguments": item.arguments}
+            for item in route.tool_calls
+        ]
+        audits = execute_planned_mock_tools(planned)
+        return _direct_answer_payload(
+            request,
+            route,
+            answer=summarize_planned_tool_results(audits),
+            tool_calls=audits,
+        )
     context_capacity = request.context_capacity or RAG_CONTEXT_LIMIT
     retrieval_request = request
     if (
@@ -501,7 +615,7 @@ async def _generate_answer(
     # Memory shares the final context budget; live retrieval may over-fetch so
     # document filters still have enough candidates.
     context_limit = min(request.limit, context_capacity, RAG_CONTEXT_LIMIT)
-    memory_hits = _recall_memory(request)[: context_limit / 2]
+    memory_hits = _recall_memory(request)[: context_limit // 2]
     candidate_limit = 20 if request.regex_filter or request.prompt_guard else context_limit
     context_hits = memory_hits + collect_context_hits(
         results,
@@ -537,6 +651,14 @@ async def _generate_answer(
             "query": request.query,
             "model": request.answer_model,
             "mode": request.mode,
+            "intent": route.intent,
+            "route_confidence": route.confidence,
+            "route_reason": route.reason,
+            "retrieval_skipped": False,
+            "planned_tool_calls": [
+                {"name": item.name, "arguments": item.arguments}
+                for item in route.tool_calls
+            ],
             "regex_filter": request.regex_filter,
             "prompt_guard": request.prompt_guard,
             "detector_latency_ms": detector_latency_ms,
@@ -586,10 +708,16 @@ async def _generate_answer(
                 context=context,
             )
         else:
-            chain = build_rag_chain(
-                _rag_model(request.answer_model),
-                mode=request.mode,
-                additional_system_instruction=spotlighting_instruction,
+            chain = (
+                build_rag_chain(
+                    _rag_model(request.answer_model),
+                    mode=request.mode,
+                    additional_system_instruction=spotlighting_instruction,
+                )
+                if spotlighting_instruction
+                else build_rag_chain(
+                    _rag_model(request.answer_model), mode=request.mode
+                )
             )
             generated_answer = await chain.ainvoke(
                 {
@@ -621,6 +749,14 @@ async def _generate_answer(
         "query": request.query,
         "model": request.answer_model,
         "mode": request.mode,
+        "intent": route.intent,
+        "route_confidence": route.confidence,
+        "route_reason": route.reason,
+        "retrieval_skipped": False,
+        "planned_tool_calls": [
+            {"name": item.name, "arguments": item.arguments}
+            for item in route.tool_calls
+        ],
         "regex_filter": request.regex_filter,
         "prompt_guard": request.prompt_guard,
         "detector_latency_ms": detector_latency_ms,
@@ -1101,6 +1237,7 @@ async def _run_poisoned_rag_experiment(
             cleanup_before_run=request.cleanup_before_run,
             candidate_multiplier=request.candidate_multiplier,
             include_query_prefix=request.include_query_prefix,
+            poison_composition=request.poison_composition,
         ),
         metrics=metrics,
         baseline=baseline,
@@ -1900,9 +2037,7 @@ async def run_agent_poison_experiment(
 ) -> AgentPoisonResponse:
     """Run an isolated AgentPoison reproduction without mutating Chroma."""
     run_id = f"agentpoison-{uuid4().hex[:12]}"
-    records = load_json_documents(
-        Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"
-    )[: request.benign_corpus_limit]
+    records = load_json_documents(AGENT_POISON_CORPUS_FILE)[: request.benign_corpus_limit]
     benign_memories = [
         (str(item["text"]), str(item["text"]), False) for item in records
     ]
@@ -1914,28 +2049,38 @@ async def run_agent_poison_experiment(
         seed_trigger=request.seed_trigger,
         candidate_tokens=request.candidate_tokens,
         iterations=request.iterations,
+        query_batch_size=request.query_batch_size,
     )
     poison_memories = [
         (
             f"{request.train_queries[index % len(request.train_queries)]} {best.trigger}",
-            request.target_action,
+            craft_poison_value(
+                request.target_action,
+                query=request.train_queries[index % len(request.train_queries)],
+                style=request.poison_style,
+            ),
             True,
         )
         for index in range(request.poison_count)
     ]
     poisoned_memory = benign_memories + poison_memories
+    # Embed each corpus once and reuse it for every test query below, instead
+    # of letting rank_memory re-embed the (possibly large) benign corpus on
+    # every call -- see embed_memory()'s docstring.
+    embedded_benign = embed_memory(embedding, benign_memories)
+    embedded_poisoned = embedded_benign + embed_memory(embedding, poison_memories)
     trials: list[dict[str, object]] = []
     retrieval_successes = action_successes = end_to_end_successes = preserved = 0
     for query in request.test_queries:
-        clean_ranked = rank_memory(
-            embedding, query=query, memories=benign_memories, top_k=request.top_k
+        clean_ranked = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_benign, top_k=request.top_k
         )
-        clean_under_poison = rank_memory(
-            embedding, query=query, memories=poisoned_memory, top_k=request.top_k
+        clean_under_poison = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         triggered_query = f"{query} {best.trigger}"
-        triggered_ranked = rank_memory(
-            embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
+        triggered_ranked = rank_embedded_memory(
+            embedding, query=triggered_query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         retrieved = retrieval_success(triggered_ranked)
         clean_answer = await _answer_with_supplied_context(
@@ -1947,11 +2092,11 @@ async def run_agent_poison_experiment(
         triggered_answer = await _answer_with_supplied_context(
             triggered_query, "\n\n".join(item[1] for item in triggered_ranked)
         )
-        action_succeeded = phrase_present(triggered_answer, request.target_action)
+        action_succeeded = phrase_adopted(triggered_answer, request.target_action)
         retrieval_successes += int(retrieved)
         action_successes += int(retrieved and action_succeeded)
         end_to_end_successes += int(action_succeeded)
-        preserved += int(normalize_text(clean_answer) == normalize_text(clean_poisoned_answer))
+        preserved += int(answers_agree(clean_answer, clean_poisoned_answer))
         trials.append({
             "query": query,
             "triggered_query": triggered_query,
@@ -2040,6 +2185,8 @@ async def run_agent_poison_benchmark(
                         top_k=request.top_k,
                         iterations=request.iterations,
                         benign_corpus_limit=request.benign_corpus_limit,
+                        query_batch_size=request.query_batch_size,
+                        poison_style=request.poison_style,
                     )
                 )
             except Exception as exc:

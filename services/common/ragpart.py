@@ -41,23 +41,33 @@ class RagPartConfig:
 def partition_text(text: str, fragments: int) -> list[str]:
     """Split text into contiguous, near-equal fragments.
 
-    Short documents are split into fewer fragments rather than empty ones. The
-    lab fixtures are far shorter than the paper's NQ passages, so this keeps
-    utility loss from being an artifact of empty fragments.
+    Always returns exactly ``fragments`` pieces. A short document that has
+    fewer than ``fragments`` words repeats words across fragments rather than
+    returning fewer, non-empty pieces than that: ``_index_ragpart`` stores
+    ``combination_vectors(fragment_vectors, combination_size)`` under
+    ``combo_index`` 0..len(fragment_vectors)-1, and ``search_ragpart`` queries
+    a *fixed* ``combo_index`` range computed from the configured
+    ``fragments``/``combination_size``, the same range for every document.
+    Returning fewer fragments for short text used to make
+    ``combination_vectors`` derive its combination size from
+    ``len(fragment_vectors)`` instead of the configured ``combination_size``,
+    so a short document's ``combo_index`` values did not line up with what
+    every other document's ``combo_index`` values mean, and any
+    ``combo_index`` beyond its own (smaller) vector count silently excluded
+    it from that round's majority vote -- an accidental under-count in favor
+    of longer documents, not a defensive property.
     """
-    words = text.split()
-    count = min(fragments, len(words))
-    if count <= 1:
-        return [text]
-
-    size, remainder = divmod(len(words), count)
-    pieces: list[str] = []
-    start = 0
-    for index in range(count):
-        stop = start + size + (1 if index < remainder else 0)
-        pieces.append(" ".join(words[start:stop]))
-        start = stop
-    return pieces
+    words = text.split() or [text]
+    if len(words) >= fragments:
+        size, remainder = divmod(len(words), fragments)
+        pieces: list[str] = []
+        start = 0
+        for index in range(fragments):
+            stop = start + size + (1 if index < remainder else 0)
+            pieces.append(" ".join(words[start:stop]))
+            start = stop
+        return pieces
+    return [words[index % len(words)] for index in range(fragments)]
 
 
 def _mean_pool(vectors: list[list[float]]) -> list[float]:

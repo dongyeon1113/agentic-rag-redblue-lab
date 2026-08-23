@@ -5,7 +5,7 @@ from argparse import Namespace
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from scripts.build_nq_corpus import build
+from scripts.build_nq_corpus import build, choose_document_ids
 
 
 def test_build_includes_qrels_and_is_reproducible(tmp_path) -> None:
@@ -57,3 +57,18 @@ def test_build_includes_qrels_and_is_reproducible(tmp_path) -> None:
     assert json.loads(experiments.read_text())[0]["relevant_document_ids"] == [
         "beir-nq-doc19"
     ]
+
+
+def test_choose_document_ids_selects_every_row_without_sampling_when_count_covers_corpus() -> None:
+    # Rejection sampling for a count equal to (or exceeding) total_rows would
+    # hang on the last few ids (birthday-paradox tail); this must take the
+    # direct path instead and return immediately.
+    selected = choose_document_ids(
+        total_rows=2_681_468,
+        required_ids={"doc5"},
+        count=2_681_468,
+        seed=12,
+    )
+
+    assert len(selected) == 2_681_468
+    assert selected == {f"doc{index}" for index in range(2_681_468)}

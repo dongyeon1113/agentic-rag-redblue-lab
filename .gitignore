@@ -226,6 +226,9 @@ secrets/*
 !.env.example
 datasets/raw/*
 !datasets/raw/.gitkeep
+# Full 2.68M-document BEIR NQ corpus: ~1.6GB, over GitHub's 100MB file limit.
+# Deployed out-of-band; see AGENT_POISON_CORPUS_FILE / DATA_FILE overrides.
+datasets/generated/nq_2681468.json
 data/
 models/
 .huggingface/
