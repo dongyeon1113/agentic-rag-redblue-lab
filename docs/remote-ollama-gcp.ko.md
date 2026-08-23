@@ -69,12 +69,32 @@ curl --fail --show-error http://GPU_VM_PRIVATE_IP:11434/api/tags
 REMOTE_OLLAMA_BASE_URL=http://GPU_VM_PRIVATE_IP:11434
 ```
 
+`GPU_VM_PRIVATE_IP`는 예시 문자열이므로 실제 VPC 또는 VPN IP로 바꾼다.
+별도의 env 파일을 사용한다면(예: `.env.shkwon`) 그 파일에 같은 변수를
+추가하고 Compose의 전역 옵션으로 지정한다.
+
 그런 다음 원격 전용 override를 함께 지정한다.
 
 ```bash
 docker compose \
+  --env-file .env.shkwon \
   -f compose.yaml \
   -f compose.remote-ollama.yaml \
+  up -d --build
+```
+
+Docker를 `sudo`로 실행할 때는 셸 앞에 붙인 환경변수가 기본적으로
+보존되지 않는다. 위처럼 `REMOTE_OLLAMA_BASE_URL`을 env 파일에 넣는
+방식을 권장한다. 일회성으로 전달하려면 다음과 같이 `sudo env`를 쓴다.
+
+```bash
+sudo env REMOTE_OLLAMA_BASE_URL="http://ACTUAL_PRIVATE_IP:11434" \
+  docker compose \
+  --env-file .env.shkwon \
+  -f compose.yaml \
+  -f compose.snap.yaml \
+  -f compose.remote-ollama.yaml \
+  -p shkwon-test \
   up -d --build
 ```
 
@@ -119,4 +139,3 @@ docker compose \
 - 실험 재현성을 위해 Ollama 버전, 모델 tag와 digest를 실험 결과에 함께
   기록하는 것이 좋다.
 - 공개망 연결이 불가피하면 인증과 TLS가 있는 reverse proxy를 앞에 둔다.
-
