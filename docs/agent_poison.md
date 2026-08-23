@@ -60,6 +60,46 @@
 
 `OLLAMA_TEMPERATURE` 기본값이 `0`(greedy decoding)이고 임베딩도 결정론적(`DeterministicHashEmbeddings`)이라, 같은 입력으로 AgentPoison을 여러 번 반복해도 **토씨 하나 안 틀리고 완전히 같은 결과**가 나온다 (실측: 2026-08-16, `poison_count=1/3/5 × repetitions=3` 모두 각 poison_count 안에서 3회가 정확히 동일). PoisonedRAG의 반복 실행은 poison 문서 생성 단계에서 LLM 샘플링·재시도가 들어가 매 실행이 실제로 달라지기 때문에 의미가 있었지만, AgentPoison은 그런 무작위 단계가 없어 `repetitions`를 늘려도 새로운 정보를 얻지 못한다(시간만 배로 든다). 대신 corpus 크기·train/test 질의 구성처럼 **입력 자체를 바꿔가며** 비교하는 편이 유의미하다.
 
+## 기본값 재조정과 corpus 크기의 역설 (2026-08-23)
+
+"AgentPoison ASR이 낮은데 데이터가 부족해서일 수도 있다"는 가설을 실제로 검증한 기록. 결론부터: **train/test 질의를 늘리는 건 도움이 됐고, benign corpus를 늘리는 건 오히려 ASR-r을 0으로 죽였다.** 두 "데이터"는 이 공격 방식에서 정반대로 작동한다.
+
+### 성능 버그 두 개 (먼저 고쳐야 데이터를 늘려볼 수 있었음)
+
+1. **`rank_memory`가 매 test query마다 benign corpus 전체를 재임베딩**하고 있었다(clean/poisoned 두 번씩, test query당 최대 3회). `DeterministicHashEmbeddings`(무료)에서는 안 보이던 문제인데, 실제 배포에 쓰는 `nomic-embed-text`로는 corpus를 조금만 키워도 감당이 안 됐다. `embed_memory()`/`rank_embedded_memory()`를 추가해 corpus를 요청당 한 번만 임베딩하고 재사용하도록 고침(`services/orchestrator/agent_poison.py`).
+2. `optimize_trigger`가 매 후보 trigger마다 **train_queries 전부**를 재임베딩했다 — train_queries를 늘릴수록 탐색 비용이 선형으로 늘어 실질적으로 데이터를 늘릴 수 없는 구조였다. `query_batch_size` 파라미터(기본 6)를 추가해 공식 구현의 `num_grad_iter`(gradient accumulation batch)와 같은 방식으로 anchor 질의 수를 고정 상한선 안에서 샘플링하도록 함 — train_queries를 아무리 늘려도 탐색 비용은 그대로.
+3. 여기에 더해 **실제 Ollama 임베딩 서버가 한 번에 너무 큰 배치(1000+ 텍스트)를 받으면 연결이 끊기며 실패**하는 것도 발견함(500개는 성공, 1000개는 실패; 심지어 이미 여러 요청을 처리한 뒤에는 400개도 간헐적으로 실패). `_embed_documents_in_batches()`로 250개 단위 배치 + 배치당 최대 3회 재시도를 추가함.
+
+### 실측: 무엇이 진짜 ASR을 올렸고, 무엇이 죽였나
+
+동일한 `craft_poison_value`/`phrase_adopted` 수정이 적용된 상태에서, `qwen3:8b` + `nomic-embed-text`(원격 배포와 동일 구성)로 여러 설정을 실제로 돌려 비교함.
+
+| 설정 | benign_corpus_limit | trigger 어휘 | train/test 질의 | poison_count | iterations | **asr_r** | **asr_a** | **asr_t** |
+|---|---|---|---|---|---|---|---|---|
+| BASELINE (기존 기본값) | 100 | 흔한 단어(`"please respond carefully"` 등) | GUI 원래 3/2개 | 3 | 8 | 0.5 | 1.0 | 0.5 |
+| PROPOSED (corpus만 대폭 증가) | 2000 | 희귀 단어 | 새 10/5개 | 3 | 16 | **0.0** | 0.0 | 0.0 |
+| PROPOSED_V2 (poison·iteration도 증가) | 2000 | 희귀 단어 | 새 10/5개 | 5 | 24 | **0.0** | 0.0 | 0.0 |
+| PROPOSED_V3 (corpus를 절충) | 300 | 희귀 단어 | 새 10/5개 | 5 | 24 | **0.0** | 0.0 | 0.0 |
+| **PROPOSED_V4 (corpus만 원복, 나머지는 새 설정)** | **100** | 희귀 단어 | 새 10/5개 | 3 | 16 | **0.6** | **1.0** | **0.6** |
+
+(각 조건 test_queries 5개, 1회 실행. n이 작아 방향성 확인 수준.)
+
+**해석**:
+- BASELINE→PROPOSED_V4 비교(둘 다 corpus=100)가 핵심이다: trigger 어휘를 희귀 단어로 바꾸고 train/test 질의를 늘렸더니 **asr_r이 0.5 → 0.6으로 개선**됐다. 이건 순수하게 도움이 됨.
+- PROPOSED(corpus=2000)와 PROPOSED_V3(corpus=300)는 poison_count와 iterations를 더 줘도(V2) `asr_r`이 **0.0에 고정**됐다. `retrieval_success()`는 top-k **전부**가 poison이어야 성공인데, benign 경쟁 문서가 100→300개만 돼도 이 gradient 없는 좌표별 완전탐색 surrogate로는 top-k를 전부 poison으로 채우지 못했다.
+- 즉 corpus 크기는 이 공격 방식에서 "많을수록 realistic하니까 좋다"가 아니라 **"많을수록 뚫어야 할 방어벽이 두꺼워진다"**로 작동한다. 공식 구현이 gradient-guided HotFlip으로 1000 iteration을 도는 이유가 바로 이 장벽을 넘기 위해서인데, 이 lab의 surrogate는 그 정도 탐색력이 없다.
+
+### 반영한 기본값
+
+- `AgentPoisonRequest`/`AgentPoisonBenchmarkRequest`의 `seed_trigger`/`candidate_tokens` 기본값을 흔한 단어에서 희귀 단어(`"aurora cipher nomad"` + 16개 후보)로 교체.
+- `iterations` 기본값 8→16, `query_batch_size`(신규) 기본 6.
+- **`benign_corpus_limit` 기본값은 100 유지**(늘렸다가 위 실측으로 되돌림). 상한(`le=100000`)은 그대로 두어, 원한다면 직접 늘려서 실험할 수는 있게 함 — 다만 그러면 `poison_count`/`iterations`도 훨씬 더 키워야 한다는 걸 위 표가 보여준다.
+- `demo.html`의 학습/테스트 질의 기본값을 실제 NQ 질문 10개/5개로 확장(`datasets/experiments/agent_poison_queries.json` 신규, `nq_target_queries.json`에서 발췌).
+
+### 다음에 corpus를 정말 키우고 싶다면
+
+이 표가 보여주는 트레이드오프를 감안하면, corpus를 키우면서 ASR-r을 유지하려면 poison_count를 corpus 크기에 비례해서 늘리거나(예: corpus 2000이면 top_k보다 훨씬 큰 poison_count로 top-k 자리를 수적으로 압도), trigger 탐색력 자체를 키워야 한다(iterations/candidate_tokens를 공식 구현 수준(1000×100)에 훨씬 가깝게, 또는 gradient 기반 탐색으로 교체). 후자는 이 lab의 black-box/gradient-free 설계 원칙과 상충하므로, 전자(poison_count를 corpus에 비례)가 이 아키텍처 안에서 더 현실적인 다음 단계다.
+
 ## 참고
 
 - 논문: https://papers.nips.cc/paper_files/paper/2024/file/eb113910e9c3f6242541c1652e30dfd6-Paper-Conference.pdf

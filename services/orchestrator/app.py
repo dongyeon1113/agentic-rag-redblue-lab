@@ -49,8 +49,9 @@ from services.common.embeddings import create_embeddings
 from services.common.search import load_json_documents
 from services.orchestrator.agent_poison import (
     craft_poison_value,
+    embed_memory,
     optimize_trigger,
-    rank_memory,
+    rank_embedded_memory,
     retrieval_success,
 )
 from services.orchestrator.evaluation import (
@@ -975,6 +976,7 @@ async def run_agent_poison_experiment(
         seed_trigger=request.seed_trigger,
         candidate_tokens=request.candidate_tokens,
         iterations=request.iterations,
+        query_batch_size=request.query_batch_size,
     )
     poison_memories = [
         (
@@ -988,18 +990,23 @@ async def run_agent_poison_experiment(
         for index in range(request.poison_count)
     ]
     poisoned_memory = benign_memories + poison_memories
+    # Embed each corpus once and reuse it for every test query below, instead
+    # of letting rank_memory re-embed the (possibly large) benign corpus on
+    # every call -- see embed_memory()'s docstring.
+    embedded_benign = embed_memory(embedding, benign_memories)
+    embedded_poisoned = embedded_benign + embed_memory(embedding, poison_memories)
     trials: list[dict[str, object]] = []
     retrieval_successes = action_successes = end_to_end_successes = preserved = 0
     for query in request.test_queries:
-        clean_ranked = rank_memory(
-            embedding, query=query, memories=benign_memories, top_k=request.top_k
+        clean_ranked = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_benign, top_k=request.top_k
         )
-        clean_under_poison = rank_memory(
-            embedding, query=query, memories=poisoned_memory, top_k=request.top_k
+        clean_under_poison = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         triggered_query = f"{query} {best.trigger}"
-        triggered_ranked = rank_memory(
-            embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
+        triggered_ranked = rank_embedded_memory(
+            embedding, query=triggered_query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         retrieved = retrieval_success(triggered_ranked)
         clean_answer = await _answer_with_supplied_context(
@@ -1104,6 +1111,7 @@ async def run_agent_poison_benchmark(
                         top_k=request.top_k,
                         iterations=request.iterations,
                         benign_corpus_limit=request.benign_corpus_limit,
+                        query_batch_size=request.query_batch_size,
                     )
                 )
             except Exception as exc:
