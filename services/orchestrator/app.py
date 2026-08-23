@@ -105,6 +105,18 @@ AGENT_MEMORY_FILE = Path(
     os.getenv("AGENT_MEMORY_FILE", "/tmp/agent-memory/memory.jsonl")
 )
 MEMORY_RECALL_LIMIT = int(os.getenv("MEMORY_RECALL_LIMIT", "3"))
+AGENT_POISON_CORPUS_FILE = Path(
+    os.getenv(
+        "AGENT_POISON_CORPUS_FILE",
+        # The full 2.68M-document corpus (datasets/generated/nq_2681468.json)
+        # is too large to commit to git (~1.6GB; GitHub rejects files over
+        # 100MB), so it isn't in the repo -- deployments that have it placed
+        # out-of-band point AGENT_POISON_CORPUS_FILE at it instead. This
+        # default is the smaller, git-tracked corpus so a fresh clone works
+        # without any extra setup.
+        str(Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"),
+    )
+)
 
 
 @lru_cache(maxsize=1)
@@ -962,9 +974,7 @@ async def run_agent_poison_experiment(
 ) -> AgentPoisonResponse:
     """Run an isolated AgentPoison reproduction without mutating Chroma."""
     run_id = f"agentpoison-{uuid4().hex[:12]}"
-    records = load_json_documents(
-        Path(__file__).resolve().parents[2] / "datasets/generated/nq_100000.json"
-    )[: request.benign_corpus_limit]
+    records = load_json_documents(AGENT_POISON_CORPUS_FILE)[: request.benign_corpus_limit]
     benign_memories = [
         (str(item["text"]), str(item["text"]), False) for item in records
     ]

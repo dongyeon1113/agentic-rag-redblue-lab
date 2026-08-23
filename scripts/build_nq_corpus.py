@@ -77,6 +77,14 @@ def choose_document_ids(
 ) -> set[str]:
     if count < len(required_ids):
         raise ValueError("Requested count is smaller than required qrels documents")
+    if count >= total_rows:
+        # Random rejection sampling for the whole corpus is pathological: the
+        # last handful of unclaimed ids have vanishingly small hit
+        # probability (birthday-paradox tail), so the loop below would run
+        # for an unbounded time as it approaches total_rows. Selecting every
+        # id directly is both correct and immediate for the "use everything"
+        # case.
+        return {f"doc{index}" for index in range(total_rows)}
     selected = set(required_ids)
     generator = random.Random(seed)
     while len(selected) < count:
