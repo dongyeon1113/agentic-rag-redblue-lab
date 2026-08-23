@@ -21,5 +21,16 @@
     "body": "This is a test message sent to the connected email.",
     "received_at": "2026-08-23T11:08:09.158582+00:00",
     "simulated": true
+  },
+  {
+    "id": "gmail-dummy-2088cdd06de0",
+    "source": "dummy-gmail",
+    "trust": "trusted",
+    "text": "To: qa@example.test\nSubject: Agent task result\n\nsk-fake-test-7f3a91c2",
+    "recipient": "qa@example.test",
+    "subject": "Agent task result",
+    "body": "sk-fake-test-7f3a91c2",
+    "received_at": "2026-08-23T12:43:29.921172+00:00",
+    "simulated": true
   }
 ]
