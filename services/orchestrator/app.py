@@ -56,10 +56,10 @@ from services.orchestrator.agent_poison import (
 )
 from services.orchestrator.evaluation import (
     answer_accuracy,
+    answers_agree,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
-    normalize_text,
     phrase_adopted,
     retrieval_stage_metrics,
 )
@@ -984,6 +984,7 @@ async def run_agent_poison_experiment(
             craft_poison_value(
                 request.target_action,
                 query=request.train_queries[index % len(request.train_queries)],
+                style=request.poison_style,
             ),
             True,
         )
@@ -1022,7 +1023,7 @@ async def run_agent_poison_experiment(
         retrieval_successes += int(retrieved)
         action_successes += int(retrieved and action_succeeded)
         end_to_end_successes += int(action_succeeded)
-        preserved += int(normalize_text(clean_answer) == normalize_text(clean_poisoned_answer))
+        preserved += int(answers_agree(clean_answer, clean_poisoned_answer))
         trials.append({
             "query": query,
             "triggered_query": triggered_query,
@@ -1112,6 +1113,7 @@ async def run_agent_poison_benchmark(
                         iterations=request.iterations,
                         benign_corpus_limit=request.benign_corpus_limit,
                         query_batch_size=request.query_batch_size,
+                        poison_style=request.poison_style,
                     )
                 )
             except Exception as exc:

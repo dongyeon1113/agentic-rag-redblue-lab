@@ -195,8 +195,15 @@
           </div>
           <div class="field"><label for="apBatch">iteration당 anchor 질의 수</label><input id="apBatch" type="number" min="1" max="50" value="6"></div>
           <div class="field"><label for="apRepetitions">조건별 반복 횟수</label><input id="apRepetitions" type="number" min="1" max="5" value="1"></div>
+          <div class="field"><label for="apPoisonStyle">Poison memory 문체</label>
+            <select id="apPoisonStyle">
+              <option value="factual" selected>factual · 사실 주장 (지식/메모리 오염, 기본값)</option>
+              <option value="directive">directive · 명령형 (사실상 prompt injection, 비교용)</option>
+            </select>
+          </div>
           <div class="paper"><b>공식 논문 (NeurIPS 2024)</b>white-box BERT gradient + HotFlip beam search · iterations=1000 · candidates m=500/s=100 · grad batch=30 · GPT-2 coherence 필터 · 실제 target LLM 기반 ASR 측정</div>
           <div class="paper"><b>이 랩의 in-memory surrogate</b>gradient 없는 좌표별 완전탐색 beam search · black-box embedding API · Chroma/local_db_agent 미변경 · 결과는 논문 수치와 직접 비교 불가</div>
+          <div class="paper"><b>factual vs directive (2026-08-23 실측)</b>동일 corpus·질의에서 factual은 asr_a=0.0, directive는 asr_a=1.0 — directive는 이 저장소의 DEFENDED_SYSTEM_PROMPT가 막도록 설계된 명령 주입에 더 가까움. 자세한 내용은 docs/agent_poison.md 참고.</div>
         </div></details>
       </form>
     </aside>
@@ -380,7 +387,7 @@
     return {
       train_queries:apLines("apTrain"),test_queries:apLines("apTest"),target_action:$("apTarget").value,
       top_k:+$("apTopk").value,iterations:+$("apIterations").value,benign_corpus_limit:+$("apCorpus").value,
-      query_batch_size:+$("apBatch").value
+      query_batch_size:+$("apBatch").value,poison_style:$("apPoisonStyle").value
     };
   }
   function apBusy(on){["apRunButton","apBenchmarkButton"].forEach(id=>$(id).disabled=on)}

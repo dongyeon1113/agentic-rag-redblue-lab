@@ -509,9 +509,15 @@ class AgentPoisonRequest(BaseModel):
     # retrieval_success() requires *every* top-k slot to be poisoned and a
     # bigger benign pool makes that much harder for this gradient-free
     # surrogate to win. 100 is the corpus size that measurably worked
-    # (asr_r=0.6) with the rest of these defaults -- see docs/agent_poison.md.
+    # (isolated A/B: asr_r 0.5 -> 1.0 from the trigger vocabulary alone, same
+    # queries/corpus) -- see docs/agent_poison.md.
     benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
     query_batch_size: int = Field(default=6, ge=1, le=50)
+    # "factual" is the default because it's the honest reproduction of
+    # memory/knowledge-base poisoning; "directive" is closer to plain prompt
+    # injection (see craft_poison_value's docstring) and is offered mainly
+    # for side-by-side comparison, not as a stronger "better" setting.
+    poison_style: Literal["factual", "directive"] = "factual"
 
 
 class AgentPoisonMetrics(BaseModel):
@@ -563,9 +569,11 @@ class AgentPoisonBenchmarkRequest(BaseModel):
     # retrieval_success() requires *every* top-k slot to be poisoned and a
     # bigger benign pool makes that much harder for this gradient-free
     # surrogate to win. 100 is the corpus size that measurably worked
-    # (asr_r=0.6) with the rest of these defaults -- see docs/agent_poison.md.
+    # (isolated A/B: asr_r 0.5 -> 1.0 from the trigger vocabulary alone, same
+    # queries/corpus) -- see docs/agent_poison.md.
     benign_corpus_limit: int = Field(default=100, ge=10, le=100000)
     query_batch_size: int = Field(default=6, ge=1, le=50)
+    poison_style: Literal["factual", "directive"] = "factual"
 
     @model_validator(mode="after")
     def validate_counts(self) -> "AgentPoisonBenchmarkRequest":

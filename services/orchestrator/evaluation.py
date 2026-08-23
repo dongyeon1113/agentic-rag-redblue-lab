@@ -83,6 +83,31 @@ def phrase_adopted(text: str, phrase: str) -> bool:
     return False
 
 
+def leading_sentence(text: str) -> str:
+    """The first sentence of a free-form answer -- where a direct-answer
+    style response states its actual answer, before any hedging or cited
+    caveats that follow."""
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    return sentences[0] if sentences else ""
+
+
+def answers_agree(left: str, right: str) -> bool:
+    """Whether two free-form answers state the same thing, tolerating
+    wording differences in how each hedges or cites its sources.
+
+    Comparing full ``normalize_text(...)`` strings for exact equality is too
+    strict: two calls to the same model can state the identical answer and
+    then paraphrase the trailing caveat differently (e.g. "Berlin. However,
+    the context does not mention Berlin" vs "Berlin. This information is
+    not directly mentioned in the context, which includes..."), which
+    scores as "changed" even though nothing about the actual answer moved.
+    Comparing just the leading sentence catches that case while still
+    flagging a real change (e.g. the answer itself flips from a place name
+    to "I don't know").
+    """
+    return normalize_text(leading_sentence(left)) == normalize_text(leading_sentence(right))
+
+
 def evaluate_answer(
     answer: str,
     *,
