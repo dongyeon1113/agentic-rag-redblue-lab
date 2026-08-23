@@ -32,6 +32,7 @@ app = create_search_agent(
     service_name="drive-agent",
     default_data_file=DEFAULT_DATA_FILE,
     default_search_backend="chroma",
+    data_file_override=DEFAULT_DATA_FILE if not DRIVE_SYNC_ENABLED else None,
 )
 
 

@@ -218,10 +218,43 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project-local secrets and generated data
-secrets/*.json
+# Keep only the documentation placeholder; credentials may use formats other than JSON.
+secrets/*
+!secrets/README.md
 .env
+.env.*
+!.env.example
 datasets/raw/*
 !datasets/raw/.gitkeep
 data/
 models/
 .huggingface/
+
+# Local Chroma/runtime state
+chroma/
+.chroma/
+*.sqlite3
+*.sqlite3-journal
+
+# OAuth credentials and tokens
+credentials*.json
+client_secret*.json
+token*.json
+
+# Private keys and local certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# OS and editor-local files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Runtime benchmark artifacts
+result/*
+!result/.gitkeep

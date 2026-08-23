@@ -34,11 +34,11 @@ cd team-project
 검증:
 
 ```bash
-docker compose ps
+docker compose -p shkwon-test ps
 python3 scripts/smoke_test.py
 ```
 
-`docker compose ps`에서 상시 서비스 5개가 `healthy`이고 스모크 테스트가
+`docker compose -p shkwon-test ps`에서 상시 서비스 5개가 `healthy`이고 스모크 테스트가
 `Smoke test passed.`를 출력하면 정상이다. `ollama-model-init`은 모델을
 준비하고 정상 종료되는 일회성 컨테이너다.
 
@@ -56,14 +56,14 @@ ssh -p <SSH_PORT> -L 8000:localhost:8000 <USER>@<SERVER>
 ## 자주 쓰는 명령
 
 ```bash
-docker compose ps
-docker compose logs -f orchestrator
-docker compose restart
-docker compose down
+docker compose -p shkwon-test ps
+docker compose -p shkwon-test logs -f orchestrator
+docker compose -p shkwon-test restart
+docker compose -p shkwon-test down
 ```
 
-`docker compose down`은 컨테이너만 내리고 데이터 볼륨은 보존한다.
-`docker compose down -v`는 ChromaDB와 Ollama 모델 볼륨을 삭제하므로
+`docker compose -p shkwon-test down`은 컨테이너만 내리고 데이터 볼륨은 보존한다.
+`docker compose -p shkwon-test down -v`는 ChromaDB와 Ollama 모델 볼륨을 삭제하므로
 초기화가 필요한 경우가 아니면 사용하지 않는다.
 
 Snap Docker 서버에서 이미지를 다시 빌드할 때는 항상 다음 명령을 사용한다.

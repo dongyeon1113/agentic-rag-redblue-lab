@@ -27,10 +27,12 @@ class ChromaDocumentStore:
         persist_directory: Path | None = None,
         embedding: Embeddings | None = None,
         ragpart: RagPartConfig | None = None,
+        sync_data_file: bool = False,
     ) -> None:
         self.data_file = data_file
         self.embedding = embedding or DeterministicHashEmbeddings()
         self.ragpart = ragpart or RagPartConfig()
+        self.sync_data_file = sync_data_file
         persist = str(persist_directory) if persist_directory is not None else None
         self.vector_store = Chroma(
             collection_name=collection_name,
@@ -49,6 +51,10 @@ class ChromaDocumentStore:
 
     def _index_documents(self) -> None:
         records = load_json_documents(self.data_file)
+        if self.sync_data_file:
+            synchronized_ids = self.vector_store.get(include=[]).get("ids", [])
+            if synchronized_ids:
+                self.vector_store.delete(ids=[str(item) for item in synchronized_ids])
         existing_ids_list: list[str] = []
         existing_metadatas: list[dict[str, object] | None] = []
         page_size = 5_000
