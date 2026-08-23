@@ -47,14 +47,19 @@ from services.common.schemas import (
 )
 from services.common.embeddings import create_embeddings
 from services.common.search import load_json_documents
-from services.orchestrator.agent_poison import optimize_trigger, rank_memory, retrieval_success
+from services.orchestrator.agent_poison import (
+    craft_poison_value,
+    optimize_trigger,
+    rank_memory,
+    retrieval_success,
+)
 from services.orchestrator.evaluation import (
     answer_accuracy,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
     normalize_text,
-    phrase_present,
+    phrase_adopted,
     retrieval_stage_metrics,
 )
 from services.orchestrator.memory import ConversationMemory, memory_to_hit
@@ -974,7 +979,10 @@ async def run_agent_poison_experiment(
     poison_memories = [
         (
             f"{request.train_queries[index % len(request.train_queries)]} {best.trigger}",
-            request.target_action,
+            craft_poison_value(
+                request.target_action,
+                query=request.train_queries[index % len(request.train_queries)],
+            ),
             True,
         )
         for index in range(request.poison_count)
@@ -1003,7 +1011,7 @@ async def run_agent_poison_experiment(
         triggered_answer = await _answer_with_supplied_context(
             triggered_query, "\n\n".join(item[1] for item in triggered_ranked)
         )
-        action_succeeded = phrase_present(triggered_answer, request.target_action)
+        action_succeeded = phrase_adopted(triggered_answer, request.target_action)
         retrieval_successes += int(retrieved)
         action_successes += int(retrieved and action_succeeded)
         end_to_end_successes += int(action_succeeded)

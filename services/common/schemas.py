@@ -244,6 +244,9 @@ class PoisonedRAGRequest(BaseModel):
     candidate_multiplier: int = Field(default=2, ge=1, le=5)
     fixed_candidates: list["PoisonedRAGCandidate"] | None = Field(default=None, max_length=10)
     retrieval_defense: RetrievalDefense = "none"
+    poison_composition: Literal["question_plus_instruction", "instruction_only"] = (
+        "question_plus_instruction"
+    )
 
     @model_validator(mode="after")
     def answers_must_differ(self) -> "PoisonedRAGRequest":
@@ -305,6 +308,9 @@ class PoisonedRAGRunMetadata(BaseModel):
     cleanup_before_run: bool
     candidate_multiplier: int = 1
     selection_policy: str = "verified_then_retrieval_score_with_deduplication"
+    poison_composition: Literal["question_plus_instruction", "instruction_only"] = (
+        "question_plus_instruction"
+    )
 
 
 class PoisonedRAGResponse(BaseModel):
