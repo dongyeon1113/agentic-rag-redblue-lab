@@ -78,6 +78,13 @@ checking or downloading the model.
 Open the orchestrator API documentation at `http://localhost:8000/docs`.
 For a simple demonstration UI, open `http://localhost:8000/demo`.
 
+To keep the application stack on this machine while running Ollama on a Google
+Cloud GPU VM, use the remote Compose override. It disables the local Ollama and
+GPU runtime dependencies and points generation and embedding calls at
+`REMOTE_OLLAMA_BASE_URL`. See
+[`docs/remote-ollama-gcp.ko.md`](docs/remote-ollama-gcp.ko.md) for setup and
+network security guidance.
+
 ## API examples
 
 Inspect retrieval:
