@@ -47,14 +47,20 @@ from services.common.schemas import (
 )
 from services.common.embeddings import create_embeddings
 from services.common.search import load_json_documents
-from services.orchestrator.agent_poison import optimize_trigger, rank_memory, retrieval_success
+from services.orchestrator.agent_poison import (
+    craft_poison_value,
+    embed_memory,
+    optimize_trigger,
+    rank_embedded_memory,
+    retrieval_success,
+)
 from services.orchestrator.evaluation import (
     answer_accuracy,
+    answers_agree,
     attack_success_rate,
     evaluate_answer,
     evaluate_retrieval,
-    normalize_text,
-    phrase_present,
+    phrase_adopted,
     retrieval_stage_metrics,
 )
 from services.orchestrator.memory import ConversationMemory, memory_to_hit
@@ -970,28 +976,38 @@ async def run_agent_poison_experiment(
         seed_trigger=request.seed_trigger,
         candidate_tokens=request.candidate_tokens,
         iterations=request.iterations,
+        query_batch_size=request.query_batch_size,
     )
     poison_memories = [
         (
             f"{request.train_queries[index % len(request.train_queries)]} {best.trigger}",
-            request.target_action,
+            craft_poison_value(
+                request.target_action,
+                query=request.train_queries[index % len(request.train_queries)],
+                style=request.poison_style,
+            ),
             True,
         )
         for index in range(request.poison_count)
     ]
     poisoned_memory = benign_memories + poison_memories
+    # Embed each corpus once and reuse it for every test query below, instead
+    # of letting rank_memory re-embed the (possibly large) benign corpus on
+    # every call -- see embed_memory()'s docstring.
+    embedded_benign = embed_memory(embedding, benign_memories)
+    embedded_poisoned = embedded_benign + embed_memory(embedding, poison_memories)
     trials: list[dict[str, object]] = []
     retrieval_successes = action_successes = end_to_end_successes = preserved = 0
     for query in request.test_queries:
-        clean_ranked = rank_memory(
-            embedding, query=query, memories=benign_memories, top_k=request.top_k
+        clean_ranked = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_benign, top_k=request.top_k
         )
-        clean_under_poison = rank_memory(
-            embedding, query=query, memories=poisoned_memory, top_k=request.top_k
+        clean_under_poison = rank_embedded_memory(
+            embedding, query=query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         triggered_query = f"{query} {best.trigger}"
-        triggered_ranked = rank_memory(
-            embedding, query=triggered_query, memories=poisoned_memory, top_k=request.top_k
+        triggered_ranked = rank_embedded_memory(
+            embedding, query=triggered_query, embedded_memories=embedded_poisoned, top_k=request.top_k
         )
         retrieved = retrieval_success(triggered_ranked)
         clean_answer = await _answer_with_supplied_context(
@@ -1003,11 +1019,11 @@ async def run_agent_poison_experiment(
         triggered_answer = await _answer_with_supplied_context(
             triggered_query, "\n\n".join(item[1] for item in triggered_ranked)
         )
-        action_succeeded = phrase_present(triggered_answer, request.target_action)
+        action_succeeded = phrase_adopted(triggered_answer, request.target_action)
         retrieval_successes += int(retrieved)
         action_successes += int(retrieved and action_succeeded)
         end_to_end_successes += int(action_succeeded)
-        preserved += int(normalize_text(clean_answer) == normalize_text(clean_poisoned_answer))
+        preserved += int(answers_agree(clean_answer, clean_poisoned_answer))
         trials.append({
             "query": query,
             "triggered_query": triggered_query,
@@ -1096,6 +1112,8 @@ async def run_agent_poison_benchmark(
                         top_k=request.top_k,
                         iterations=request.iterations,
                         benign_corpus_limit=request.benign_corpus_limit,
+                        query_batch_size=request.query_batch_size,
+                        poison_style=request.poison_style,
                     )
                 )
             except Exception as exc:

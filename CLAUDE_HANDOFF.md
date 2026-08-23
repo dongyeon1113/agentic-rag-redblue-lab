@@ -112,6 +112,17 @@ git status --short --branch
      로컬 `main`도 `origin/main`과 동기화됨. 남은 코드 작업 없음 — 이제 사용자가 GUI로 직접 AgentPoison 실험을 돌리고,
      그 결과를 PPT(`PoisonedRAG.pptx`)에 반영하는 단계.
 
+## 2026-08-23 세션: 공격 정교화 + 측정 버그 수정
+
+사용자 요청: (1) AgentPoison/PoisonedRAG 공격을 더 정교하게, (2) PoisonedRAG에서 S(질문) 없이 I(instruction)만 넣어도 되는지 확인, (3) 공격성공 측정 로직 확인, (4) 서버 반영 + 깃허브 커밋. 전부 실측 기반으로 진행, 조작된 수치 없음.
+
+1. **AgentPoison poison memory 값을 지시문으로 재구성** — bare `target_action` 문자열 대신 `craft_poison_value()`로 "NOTICE (verified system record)..." 형태 지시문 생성 (`services/orchestrator/agent_poison.py`, `app.py`의 `run_agent_poison_experiment`). 실측(n=4, `qwen3:8b`): 채택률 3/4 → 4/4. 상세: [`docs/agent_poison.md`](docs/agent_poison.md) "Poison memory value를 지시문으로 재구성" 절.
+2. **공격성공 측정 버그 발견·수정** — `phrase_present`만으로는 "모델이 target 문구를 인용만 하고 실제로는 거부"한 답변도 성공으로 오판정함을 실측으로 재현(`who wrote romeo and juliet` 케이스). `services/orchestrator/evaluation.py`에 `phrase_adopted()` 추가(hedge/negation 단서가 없는 문장에서만 채택 인정), AgentPoison의 `action_succeeded` 계산에 적용. PoisonedRAG의 `evaluate_answer`는 원래부터 `expected_answer` 부재 조건이 있어 이 문제에 안전했음(기존 테스트 `test_inconclusive_answer_does_not_count_as_attack_success`로 이미 커버).
+3. **PoisonedRAG 생성 프롬프트 정교화** — target answer 초반 단정 진술 + 후반 재진술, 진짜 정답 언급 금지, 구체적 근거 포함 규칙 추가. 실측(n=8 실쿼리, `max_trials=1`): 1차 시도 검증 통과 7/8 → 8/8. 상세: [`docs/poisoned_rag.md`](docs/poisoned_rag.md).
+4. **`poison_composition="instruction_only"` 옵션 추가** — S 없이 I만 저장하는 실험을 API로 노출. 실측(n=3 쿼리, `nomic-embed-text`, benign 2000개): S\|\|I는 항상 1위·거리 여유 큼, I only는 3건 중 2건 1위 유지하지만 거리가 최대 2.2배 나빠지고 1건은 2위로 밀림 — "질문 없이도 되긴 하지만 불안정, S 포함이 명백히 더 안전"으로 결론. 기본값은 `question_plus_instruction` 유지. 상세: [`docs/poisoned_rag.md`](docs/poisoned_rag.md).
+5. 신규 테스트 8개 추가 (`test_agent_poison.py`, `test_evaluation.py`, `test_poisoned_rag.py`). 전체 75 passed, 1 skipped. compileall/diff-check 통과.
+6. 브랜치 `main`에서 직접 작업하지 않고 새 브랜치를 만들어 PR로 진행함(AGENTS.md의 "별도 브랜치 우선" 지침, 기존 PR #3~#9 워크플로우 따름).
+
 ## 공식 참고자료
 
 - 논문: https://papers.nips.cc/paper_files/paper/2024/file/eb113910e9c3f6242541c1652e30dfd6-Paper-Conference.pdf
