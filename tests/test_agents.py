@@ -310,6 +310,7 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
             "sources": ["local_db"],
             "limit": 3,
             "mode": "defended",
+            "retrieval_policy": "always",
         },
     )
     vulnerable = client.post(
@@ -319,6 +320,7 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
             "sources": ["local_db"],
             "limit": 3,
             "mode": "vulnerable",
+            "retrieval_policy": "always",
         },
     )
     isolated = client.post(
@@ -329,6 +331,7 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
             "limit": 3,
             "mode": "vulnerable",
             "allowed_untrusted_document_ids": ["current-run-poison"],
+            "retrieval_policy": "always",
         },
     )
     regex_filtered = client.post(
@@ -339,6 +342,7 @@ def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
             "limit": 3,
             "mode": "vulnerable",
             "regex_filter": True,
+            "retrieval_policy": "always",
         },
     )
 
@@ -390,6 +394,7 @@ def test_answer_can_exclude_trusted_dataset_documents(monkeypatch) -> None:
             "limit": 20,
             "include_trusted_documents": False,
             "allowed_untrusted_document_ids": ["gui-attack-1"],
+            "retrieval_policy": "always",
         },
     )
 
@@ -426,6 +431,7 @@ def test_answer_allows_empty_scenario_document_set(monkeypatch) -> None:
             "sources": ["local_db"],
             "include_trusted_documents": False,
             "allowed_untrusted_document_ids": [],
+            "retrieval_policy": "always",
         },
     )
 
@@ -467,6 +473,7 @@ def test_answer_context_capacity_limits_documents(monkeypatch) -> None:
             "sources": ["local_db"],
             "limit": 20,
             "context_capacity": 2,
+            "retrieval_policy": "always",
         },
     )
 
@@ -524,6 +531,7 @@ def test_regex_filter_changes_generated_answer_and_reports_block(
         "query": "What is the capital of France?",
         "sources": ["local_db"],
         "mode": "vulnerable",
+        "retrieval_policy": "always",
     }
 
     unfiltered = client.post(
@@ -738,7 +746,9 @@ def test_answer_reports_simulated_tool_calls(monkeypatch) -> None:
             "query": "What is the incident procedure?",
             "sources": ["local_db"],
             "enable_mock_tools": True,
+            "allow_context_tool_calls": True,
             "answer_model": "llama3.2:3b",
+            "retrieval_policy": "always",
         },
     )
 

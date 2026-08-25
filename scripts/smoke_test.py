@@ -51,6 +51,7 @@ def main() -> None:
             "sources": ["local_db"],
             "limit": 3,
             "mode": "defended",
+            "retrieval_policy": "always",
         },
     )
     assert "Paris" in answer["answer"], answer

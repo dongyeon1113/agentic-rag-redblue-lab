@@ -23,6 +23,7 @@ SOURCE_CHOICES = ("local_db", "gmail", "drive")
 MODEL_CHOICES = ("qwen3:8b", "llama3.2:3b", "llama3.2:1b")
 MODE_CHOICES = ("vulnerable", "defended")
 DEFENSE_CHOICES = ("none", "ragpart")
+RETRIEVAL_POLICY_CHOICES = ("auto", "always", "never")
 
 
 class AgentCLIError(RuntimeError):
@@ -37,6 +38,7 @@ class CLIConfig:
     model: str = "qwen3:8b"
     mode: str = "vulnerable"
     retrieval_defense: str = "none"
+    retrieval_policy: str = "auto"
     limit: int = 6
     use_memory: bool = True
     enable_tools: bool = False
@@ -58,6 +60,7 @@ class CLIConfig:
             "answer_model": self.model,
             "mode": self.mode,
             "retrieval_defense": self.retrieval_defense,
+            "retrieval_policy": self.retrieval_policy,
             "session_id": self.session_id,
             "use_memory": self.use_memory,
             "enable_mock_tools": self.enable_tools,
@@ -140,6 +143,22 @@ def print_response(config: CLIConfig, response: dict[str, Any]) -> None:
         print(f"\nroute={intent} confidence={response.get('route_confidence')} retrieval={retrieval}")
     print_rule("에이전트 답변")
     print(response.get("answer", "(답변 없음)"))
+    execution_plan = response.get("execution_plan") or []
+    step_results = {
+        item.get("step_id"): item
+        for item in (response.get("step_results") or [])
+    }
+    if execution_plan:
+        print_rule(f"실행 계획 ({len(execution_plan)}단계)")
+        for step in execution_plan:
+            result = step_results.get(step.get("id"), {})
+            label = step.get("name") or step.get("kind", "?")
+            status = result.get("status", "planned")
+            dependencies = ",".join(step.get("depends_on") or []) or "-"
+            print(f"[{step.get('id')}] {label} status={status} depends_on={dependencies}")
+            if result.get("output"):
+                print(f"    {compact_text(result['output'], 240)}")
+
 
     tool_calls = response.get("tool_calls") or []
     if config.show_tool_calls and tool_calls:
@@ -206,6 +225,7 @@ def print_config(config: CLIConfig) -> None:
                 "model": config.model,
                 "mode": config.mode,
                 "retrieval_defense": config.retrieval_defense,
+                "retrieval_policy": config.retrieval_policy,
                 "limit": config.limit,
                 "use_memory": config.use_memory,
                 "enable_mock_tools": config.enable_tools,
@@ -276,6 +296,8 @@ def set_option(config: CLIConfig, arguments: list[str]) -> None:
             config.model = value
         elif name == "defense" and value in DEFENSE_CHOICES:
             config.retrieval_defense = value
+        elif name == "retrieval" and value in RETRIEVAL_POLICY_CHOICES:
+            config.retrieval_policy = value
         elif name == "sources":
             sources = [item.strip() for item in value.split(",") if item.strip()]
             invalid = set(sources) - set(SOURCE_CHOICES)
@@ -316,6 +338,7 @@ REPL 명령:
   /set mode MODE          vulnerable 또는 defended
   /set model MODEL        qwen3:8b, llama3.2:3b, llama3.2:1b
   /set defense DEFENSE    none 또는 ragpart
+  /set retrieval POLICY  auto, always 또는 never
   /set sources LIST       local_db,gmail,drive 형식
   /set limit N            검색 Top-K
   /set memory on|off      장기 메모리
@@ -411,6 +434,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", choices=MODEL_CHOICES, default="qwen3:8b")
     parser.add_argument("--mode", choices=MODE_CHOICES, default="vulnerable")
     parser.add_argument("--defense", choices=DEFENSE_CHOICES, default="none")
+    parser.add_argument(
+        "--retrieval-policy",
+        choices=RETRIEVAL_POLICY_CHOICES,
+        default="auto",
+    )
     parser.add_argument("--limit", type=int, choices=range(1, 21), default=6)
     parser.add_argument("--context-capacity", type=int, choices=range(1, 21))
     parser.add_argument("--no-memory", action="store_true")
@@ -446,6 +474,7 @@ def config_from_args(args: argparse.Namespace) -> CLIConfig:
         mode=args.mode,
         retrieval_defense=args.defense,
         limit=args.limit,
+        retrieval_policy=args.retrieval_policy,
         use_memory=not args.no_memory,
         enable_tools=args.tools,
         regex_filter=args.regex_filter,

@@ -190,3 +190,56 @@ def test_planned_secret_then_email_resolves_dependency(monkeypatch, tmp_path) ->
     messages = json.loads(gmail_path.read_text(encoding="utf-8"))
     assert messages[0]["recipient"] == "qa@example.test"
     assert messages[0]["body"] == "fake-value"
+    assert messages[0]["trust"] == "untrusted"
+
+
+def test_connected_email_recipient_is_resolved(monkeypatch, tmp_path) -> None:
+    from services.orchestrator.mock_tools import execute_planned_mock_tools
+
+    gmail_path = tmp_path / "gmail.json"
+    gmail_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("MOCK_GMAIL_DUMMY_FILE", str(gmail_path))
+    monkeypatch.setenv("MOCK_CONNECTED_EMAIL_RECIPIENT", "owner@example.test")
+
+    audits = execute_planned_mock_tools([
+        {
+            "name": "mock_send_email",
+            "arguments": {
+                "recipient": "$connected_email",
+                "subject": "Agent task result",
+                "body": "result",
+            },
+        }
+    ])
+
+    messages = json.loads(gmail_path.read_text(encoding="utf-8"))
+    assert audits[0]["status"] == "simulated"
+    assert messages[0]["recipient"] == "owner@example.test"
+
+
+def test_planned_email_can_consume_prior_generated_answer(
+    monkeypatch, tmp_path
+) -> None:
+    from services.orchestrator.mock_tools import execute_planned_mock_tools
+
+    gmail_path = tmp_path / "gmail.json"
+    gmail_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("MOCK_GMAIL_DUMMY_FILE", str(gmail_path))
+
+    audits = execute_planned_mock_tools(
+        [
+            {
+                "name": "mock_send_email",
+                "arguments": {
+                    "recipient": "qa@example.test",
+                    "subject": "Meeting summary",
+                    "body": "$last_answer",
+                },
+            }
+        ],
+        last_answer="The meeting starts at 10:00.",
+    )
+
+    messages = json.loads(gmail_path.read_text(encoding="utf-8"))
+    assert audits[0]["status"] == "simulated"
+    assert messages[0]["body"] == "The meeting starts at 10:00."

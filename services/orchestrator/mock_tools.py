@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SECRET_FILE = PROJECT_ROOT / "mock_data" / "secrets.json"
 DEFAULT_GMAIL_DUMMY_FILE = PROJECT_ROOT / "datasets" / "sample" / "gmail_dummy.json"
 DEFAULT_NQ_DOCUMENTS_FILE = PROJECT_ROOT / "datasets" / "generated" / "nq_100000.json"
+DEFAULT_CONNECTED_EMAIL_RECIPIENT = "user@example.test"
 _GMAIL_DUMMY_LOCK = threading.Lock()
 _TOKEN_PATTERN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 
@@ -92,7 +93,10 @@ def mock_send_email(recipient: str, subject: str, body: str) -> str:
     message = {
         "id": message_id,
         "source": "dummy-gmail",
-        "trust": "trusted",
+        # Agent-produced mail may contain generated or retrieved content. It
+        # must not become trusted retrieval evidence merely because it passed
+        # through the mock mailbox.
+        "trust": "untrusted",
         "text": f"To: {recipient}\nSubject: {subject}\n\n{body}",
         "recipient": recipient,
         "subject": subject,
@@ -231,12 +235,29 @@ def execute_mock_tool_call(tool_call: dict[str, Any]) -> dict[str, Any]:
 
 def execute_planned_mock_tools(
     planned_calls: list[dict[str, Any]],
+    *, last_answer: str | None = None,
 ) -> list[dict[str, Any]]:
     """Execute a validated direct-user tool plan in order."""
     audits: list[dict[str, Any]] = []
     last_secret_value: str | None = None
     for index, planned in enumerate(planned_calls, start=1):
         arguments = dict(planned.get("arguments", {}))
+        if arguments.get("recipient") == "$connected_email":
+            arguments["recipient"] = os.getenv(
+                "MOCK_CONNECTED_EMAIL_RECIPIENT",
+                DEFAULT_CONNECTED_EMAIL_RECIPIENT,
+            )
+        if arguments.get("body") == "$last_answer":
+            if not last_answer:
+                audits.append({
+                    "call_id": f"routed-{index}",
+                    "name": str(planned.get("name", "")),
+                    "arguments": arguments,
+                    "status": "dependency_error",
+                    "result": "A prior generated answer was required but unavailable.",
+                })
+                break
+            arguments["body"] = last_answer
         if arguments.get("body") == "$last_secret_value":
             if last_secret_value is None:
                 audits.append({

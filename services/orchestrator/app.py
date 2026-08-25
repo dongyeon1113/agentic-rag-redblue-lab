@@ -1,8 +1,10 @@
 import asyncio
 import csv
 from contextlib import asynccontextmanager
+from dataclasses import replace
 import json
 import os
+import re
 from datetime import datetime, timezone
 from functools import lru_cache, partial
 from pathlib import Path
@@ -70,7 +72,13 @@ from services.orchestrator.evaluation import (
     phrase_present,
     retrieval_stage_metrics,
 )
-from services.orchestrator.memory import ConversationMemory, memory_to_hit
+from services.orchestrator.memory import (
+    USER_NAME_FACT,
+    ConversationMemory,
+    extract_user_facts,
+    is_user_name_question,
+    memory_to_hit,
+)
 from services.orchestrator.mock_tools import (
     execute_planned_mock_tools,
     restore_mock_gmail_dummy,
@@ -85,12 +93,21 @@ from services.orchestrator.poisoned_rag import (
     generate_tool_poison_set,
     select_diverse_candidates,
 )
-from services.orchestrator.router import RouteDecision, route_request
+from services.orchestrator.router import (
+    PlannedStep,
+    RouteDecision,
+    needs_semantic_planner,
+    route_from_model_output,
+    route_request,
+)
 from services.orchestrator.rag import (
     DEFENDED_SYSTEM_PROMPT,
     VULNERABLE_SYSTEM_PROMPT,
     apply_spotlighting_to_context,
+    build_direct_step_chain,
     build_rag_chain,
+    build_direct_chain,
+    build_router_chain,
     collect_context_hits,
     create_chat_model,
     filter_prompt_injection_hits,
@@ -106,6 +123,13 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
 RAG_CONTEXT_LIMIT = int(os.getenv("RAG_CONTEXT_LIMIT", "6"))
+LLM_ROUTER_ENABLED = os.getenv("LLM_ROUTER_ENABLED", "true").casefold() not in {
+    "0", "false", "no", "off",
+}
+# Empty means reuse the selected answer model, avoiding model swaps on CPU.
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", "").strip()
+ROUTER_NUM_PREDICT = int(os.getenv("ROUTER_NUM_PREDICT", "512"))
+
 
 AGENT_URLS = {
     "local_db": os.getenv("LOCAL_DB_AGENT_URL", "http://localhost:8001"),
@@ -201,6 +225,15 @@ def _rag_model(model_name: str = OLLAMA_MODEL):
         base_url=OLLAMA_BASE_URL,
         temperature=OLLAMA_TEMPERATURE,
         num_predict=OLLAMA_NUM_PREDICT,
+    )
+@lru_cache(maxsize=3)
+def _router_model(answer_model: str):
+    return create_chat_model(
+        model=ROUTER_MODEL or answer_model,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0,
+        num_predict=ROUTER_NUM_PREDICT,
+        response_format="json",
     )
 
 
@@ -477,19 +510,88 @@ async def answer(
     return await _generate_answer(request, spotlighting_methods=methods)
 
 
+def _execution_plan(route: RouteDecision) -> list[dict[str, Any]]:
+    if route.planned_steps:
+        return [
+            {
+                "id": step.step_id,
+                "kind": step.kind,
+                "depends_on": step.depends_on,
+                "instruction": step.instruction,
+                "output_key": step.output_key,
+                **(
+                    {"name": step.tool_name}
+                    if step.kind == "tool" and step.tool_name
+                    else {}
+                ),
+            }
+            for step in route.planned_steps
+        ]
+    raw_steps = list(route.suggested_steps)
+    if not raw_steps:
+        if route.requires_retrieval:
+            raw_steps.extend(["retrieve", "generate"])
+        elif route.requires_generation:
+            raw_steps.append("generate")
+        raw_steps.extend(f"tool:{call.name}" for call in route.tool_calls)
+
+    planned_tool_names = [
+        step.removeprefix("tool:") for step in raw_steps if step.startswith("tool:")
+    ]
+    for call in route.tool_calls:
+        if call.name not in planned_tool_names:
+            raw_steps.append(f"tool:{call.name}")
+
+    plan: list[dict[str, Any]] = []
+    previous_id: str | None = None
+    for index, raw_step in enumerate(raw_steps, start=1):
+        kind = "tool" if raw_step.startswith("tool:") else raw_step
+        step = {
+            "id": f"step-{index}",
+            "kind": kind,
+            "depends_on": [previous_id] if previous_id else [],
+        }
+        if kind == "tool":
+            step["name"] = raw_step.removeprefix("tool:")
+        plan.append(step)
+        previous_id = step["id"]
+    return plan
+
+
+def _step_results(
+    plan: list[dict[str, Any]],
+    *,
+    default_status: str,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "step_id": step["id"],
+            "kind": step["kind"],
+            "name": step.get("name"),
+            "status": default_status,
+        }
+        for step in plan
+    ]
+
+
 def _direct_answer_payload(
     request: OrchestratorAnswerRequest,
     route: RouteDecision,
     *,
     answer: str,
     tool_calls: list[dict[str, Any]] | None = None,
+    memory_hits: list[SearchHit] | None = None,
+    store_memory: bool = True,
+    memory_trust: str = "untrusted",
+    execution_plan: list[dict[str, Any]] | None = None,
+    step_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    if request.use_memory:
+    if request.use_memory and store_memory:
         _memory().append(
             session_id=request.session_id,
             query=request.query,
             answer=answer,
-            trust="trusted",
+            trust=memory_trust,
         )
     return {
         "service": SERVICE_NAME,
@@ -498,6 +600,7 @@ def _direct_answer_payload(
         "mode": request.mode,
         "intent": route.intent,
         "route_confidence": route.confidence,
+        "retrieval_policy": request.retrieval_policy,
         "route_reason": route.reason,
         "retrieval_skipped": True,
         "planned_tool_calls": [
@@ -505,6 +608,8 @@ def _direct_answer_payload(
             for item in route.tool_calls
         ],
         "regex_filter": request.regex_filter,
+        "execution_plan": execution_plan or _execution_plan(route),
+        "step_results": step_results or [],
         "prompt_guard": request.prompt_guard,
         "detector_latency_ms": 0.0,
         "mock_tools_enabled": request.enable_mock_tools,
@@ -517,7 +622,7 @@ def _direct_answer_payload(
         "blocked_documents": [],
         "spotlighting_documents": [],
         "results": {},
-        "memory": [],
+        "memory": [hit.model_dump() for hit in (memory_hits or [])],
     }
 
 
@@ -532,6 +637,344 @@ def _conversation_answer(query: str) -> str:
     if any(item in folded for item in ("thank", "thanks")):
         return "You are welcome! Let me know what else you need."
     return "Hello! How can I help you?"
+def _recent_memory_hits(request: OrchestratorAnswerRequest) -> list[SearchHit]:
+    if not request.use_memory:
+        return []
+    records = _memory().recent(
+        session_id=request.session_id,
+        limit=MEMORY_RECALL_LIMIT,
+        trusted_only=request.mode == "defended",
+    )
+    return [memory_to_hit(record) for record in records]
+
+
+def _memory_prompt(hits: list[SearchHit]) -> str:
+    return "\n\n".join(hit.text for hit in hits) or "(none)"
+
+
+def _merge_authorized_plan(
+    original: RouteDecision,
+    planned: RouteDecision,
+) -> RouteDecision:
+    steps = list(planned.planned_steps)
+    requires_retrieval = original.requires_retrieval or planned.requires_retrieval
+    requires_generation = (
+        original.requires_generation
+        or planned.requires_generation
+        or any(step.kind == "generate" for step in steps)
+    )
+    if requires_retrieval and not any(step.kind == "retrieve" for step in steps):
+        steps.insert(0, PlannedStep(
+            step_id="retrieve",
+            kind="retrieve",
+            instruction="Retrieve relevant evidence from the requested sources.",
+            output_key="retrieved_context",
+        ))
+    if requires_generation and not any(step.kind == "generate" for step in steps):
+        insert_at = next(
+            (index for index, step in enumerate(steps) if step.kind == "tool"),
+            len(steps),
+        )
+        steps.insert(insert_at, PlannedStep(
+            step_id="generate",
+            kind="generate",
+            instruction="Generate the content requested by the user.",
+            output_key="answer",
+        ))
+
+    present_tools = {
+        step.tool_name for step in steps if step.kind == "tool"
+    }
+    for index, call in enumerate(original.tool_calls, start=1):
+        if call.name not in present_tools:
+            steps.append(PlannedStep(
+                step_id=f"tool-{index}",
+                kind="tool",
+                instruction=f"Execute the authorized {call.name} tool.",
+                output_key=f"tool_result_{index}",
+                tool_name=call.name,
+            ))
+
+    normalized: list[PlannedStep] = []
+    used_ids: set[str] = set()
+    for index, step in enumerate(steps, start=1):
+        step_id = step.step_id
+        if step_id in used_ids:
+            step_id = f"step-{index}"
+        dependencies = [
+            item for item in step.depends_on if item in used_ids
+        ]
+        if not dependencies and normalized:
+            dependencies = [normalized[-1].step_id]
+        normalized.append(replace(
+            step,
+            step_id=step_id,
+            depends_on=dependencies,
+        ))
+        used_ids.add(step_id)
+
+    suggested = [
+        f"tool:{step.tool_name}"
+        if step.kind == "tool" and step.tool_name
+        else step.kind
+        for step in normalized
+    ]
+    has_tools = bool(original.tool_calls)
+    return replace(
+        planned,
+        intent=(
+            "hybrid"
+            if has_tools and (requires_retrieval or requires_generation)
+            else "tool_task" if has_tools else planned.intent
+        ),
+        requires_retrieval=requires_retrieval,
+        requires_generation=requires_generation,
+        suggested_steps=suggested,
+        planned_steps=normalized,
+        direct_answer=(
+            planned.direct_answer
+            if not has_tools
+            and sum(step.kind == "generate" for step in normalized) <= 1
+            else None
+        ),
+        tool_calls=original.tool_calls,
+    )
+
+
+async def _resolve_route(
+    request: OrchestratorAnswerRequest,
+    route: RouteDecision,
+    memory_hits: list[SearchHit],
+) -> RouteDecision:
+    if not needs_semantic_planner(route) or not LLM_ROUTER_ENABLED:
+        return route
+    try:
+        authorized_tool_names = {call.name for call in route.tool_calls}
+        raw = await build_router_chain(
+            _router_model(request.answer_model)
+        ).ainvoke({
+            "question": request.query,
+            "authorized_tools": (
+                ", ".join(sorted(authorized_tool_names)) or "(none)"
+            ),
+            "memory": _memory_prompt(memory_hits),
+        })
+        planned = route_from_model_output(
+            raw,
+            retrieval_policy=request.retrieval_policy,
+            authorized_tool_names=authorized_tool_names,
+        )
+    except Exception as exc:
+        return replace(
+            route,
+            confidence=min(route.confidence, 0.3),
+            reason=(
+                f"{route.reason}:semantic_planner_fallback:"
+                f"{type(exc).__name__}"
+            ),
+        )
+
+    # A model may recognize an unsupported tool intent, but it can never grant
+    # tool authority. Only deterministic calls parsed from the user text run.
+    if planned.intent in {"tool_task", "hybrid"} and not route.tool_calls:
+        return RouteDecision(
+            intent="tool_task",
+            confidence=planned.confidence,
+            reason=f"{planned.reason}:no_authorized_tool",
+            requires_retrieval=False,
+            requires_generation=False,
+            suggested_steps=[],
+            direct_answer=None,
+        )
+    return _merge_authorized_plan(route, planned)
+
+
+def _personal_memory_payload(
+    request: OrchestratorAnswerRequest,
+    route: RouteDecision,
+) -> dict[str, Any] | None:
+    facts = extract_user_facts(request.query)
+    korean = bool(re.search(r"[가-힣]", request.query))
+    if USER_NAME_FACT in facts:
+        name = facts[USER_NAME_FACT]
+        if request.use_memory:
+            answer = (
+                f"기억해 둘게요. 이름은 {name}이군요."
+                if korean
+                else f"Got it. I'll remember that your name is {name}."
+            )
+        else:
+            answer = (
+                f"현재 메모리가 꺼져 있어 저장하지는 않지만, 이번 요청에서 이름은 {name}로 확인했습니다."
+                if korean
+                else f"Memory is off, so I won't store it, but your name in this request is {name}."
+            )
+        if request.use_memory:
+            _memory().append(
+                session_id=request.session_id,
+                query="",
+                answer="",
+                trust="trusted",
+                facts={USER_NAME_FACT: name},
+            )
+        plan = _execution_plan(route)
+        return _direct_answer_payload(
+            request,
+            route,
+            answer=answer,
+            store_memory=False,
+            execution_plan=plan,
+            step_results=_step_results(plan, default_status="completed"),
+        )
+
+    if not is_user_name_question(request.query):
+        return None
+    recalled = (
+        _memory().latest_fact(
+            USER_NAME_FACT,
+            session_id=request.session_id,
+            trusted_only=request.mode == "defended",
+        )
+        if request.use_memory
+        else None
+    )
+    memory_hits: list[SearchHit] = []
+    if recalled is None:
+        answer = (
+            "아직 이 세션에서 이름을 알려주시지 않았어요."
+            if korean
+            else "You have not told me your name in this session yet."
+        )
+    else:
+        name, record = recalled
+        memory_hits = [memory_to_hit(record.model_copy(update={"score": 2.0}))]
+        answer = (
+            f"네. 이름은 {name}라고 기억하고 있어요."
+            if korean
+            else f"Yes. I remember your name is {name}."
+        )
+    plan = _execution_plan(route)
+    return _direct_answer_payload(
+        request,
+        route,
+        answer=answer,
+        memory_hits=memory_hits,
+        store_memory=False,
+        execution_plan=plan,
+        step_results=_step_results(plan, default_status="completed"),
+    )
+
+
+async def _generate_without_retrieval(
+    request: OrchestratorAnswerRequest,
+    route: RouteDecision,
+    memory_hits: list[SearchHit],
+) -> dict[str, Any]:
+    plan = _execution_plan(route)
+    generation_steps = [
+        step for step in plan if step["kind"] == "generate"
+    ]
+    generated_outputs: dict[str, str] = {}
+    try:
+        if route.direct_answer and len(generation_steps) <= 1:
+            generated_answer = route.direct_answer
+            if generation_steps:
+                generated_outputs[generation_steps[0]["id"]] = generated_answer
+        elif generation_steps:
+            generated_answer = ""
+            chain = build_direct_step_chain(_rag_model(request.answer_model))
+            for step in generation_steps:
+                dependency_outputs = {
+                    dependency: generated_outputs[dependency]
+                    for dependency in step["depends_on"]
+                    if dependency in generated_outputs
+                }
+                if not dependency_outputs and generated_answer:
+                    dependency_outputs = {"previous_result": generated_answer}
+                generated_answer = await chain.ainvoke({
+                    "question": request.query,
+                    "instruction": (
+                        step.get("instruction")
+                        or "Complete the next requested transformation."
+                    ),
+                    "dependencies": (
+                        json.dumps(dependency_outputs, ensure_ascii=False)
+                        if dependency_outputs
+                        else "(none)"
+                    ),
+                    "memory": _memory_prompt(memory_hits),
+                })
+                generated_outputs[step["id"]] = generated_answer
+        else:
+            generated_answer = route.direct_answer or await build_direct_chain(
+                _rag_model(request.answer_model)
+            ).ainvoke({
+                "question": request.query,
+                "memory": _memory_prompt(memory_hits),
+            })
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama model {request.answer_model} is unavailable: {exc}",
+        ) from exc
+
+    audits: list[dict[str, Any]] = []
+    final_answer = generated_answer
+    if route.tool_calls:
+        if not request.enable_mock_tools:
+            final_answer = (
+                f"{generated_answer}\n\n"
+                "The remaining step requires a local mock tool, but tools are disabled."
+            )
+        else:
+            planned_calls = [
+                {"name": item.name, "arguments": item.arguments}
+                for item in route.tool_calls
+            ]
+            audits = execute_planned_mock_tools(
+                planned_calls,
+                last_answer=generated_answer,
+            )
+            final_answer = (
+                f"{generated_answer}\n\n{summarize_planned_tool_results(audits)}"
+            )
+
+    results = _step_results(plan, default_status="completed")
+    audit_index = 0
+    for result in results:
+        if result["kind"] == "generate":
+            if result["step_id"] in generated_outputs:
+                result["output"] = generated_outputs[result["step_id"]]
+            continue
+        if result["kind"] != "tool":
+            continue
+        if audit_index < len(audits):
+            result["status"] = audits[audit_index]["status"]
+            result["output"] = audits[audit_index]["result"]
+            audit_index += 1
+        elif not request.enable_mock_tools:
+            result["status"] = "skipped"
+            result["output"] = "Mock tools are disabled."
+        else:
+            result["status"] = "not_run"
+
+    # A self-contained answer has no trusted external evidence. Preserve it as
+    # conversational history in vulnerable mode, but never promote it into
+    # defended evidence.
+    memory_trust = "untrusted"
+    return _direct_answer_payload(
+        request,
+        route,
+        answer=final_answer,
+        tool_calls=audits,
+        memory_hits=memory_hits,
+        store_memory=not route.tool_calls,
+        memory_trust=memory_trust,
+        execution_plan=plan,
+        step_results=results,
+    )
+
+
 
 
 async def _generate_answer(
@@ -541,13 +984,34 @@ async def _generate_answer(
 ) -> dict[str, Any]:
     selected_spotlighting_methods = spotlighting_methods or []
     route = route_request(
-        request.query, tools_enabled=request.enable_mock_tools
+        request.query,
+        tools_enabled=request.enable_mock_tools,
+        retrieval_policy=request.retrieval_policy,
     )
-    if route.intent == "conversation":
+    recent_memory_hits = _recent_memory_hits(request)
+    route = await _resolve_route(request, route, recent_memory_hits)
+
+    personal_payload = _personal_memory_payload(request, route)
+    if personal_payload is not None:
+        return personal_payload
+
+    if route.reason == "matched_social_expression":
+        plan = _execution_plan(route)
         return _direct_answer_payload(
-            request, route, answer=_conversation_answer(request.query)
+            request,
+            route,
+            answer=_conversation_answer(request.query),
+            store_memory=False,
+            execution_plan=plan,
+            step_results=_step_results(plan, default_status="completed"),
         )
-    if route.intent == "tool_task" and not route.requires_retrieval:
+
+    if (
+        route.intent == "tool_task"
+        and not route.requires_retrieval
+        and not route.requires_generation
+    ):
+        plan = _execution_plan(route)
         if not request.enable_mock_tools:
             return _direct_answer_payload(
                 request,
@@ -556,23 +1020,43 @@ async def _generate_answer(
                     "This request requires a local mock tool, but tools are disabled. "
                     "Enable tools in the CLI before retrying."
                 ),
+                store_memory=False,
+                execution_plan=plan,
+                step_results=_step_results(plan, default_status="skipped"),
             )
         if not route.tool_calls:
             return _direct_answer_payload(
                 request,
                 route,
                 answer="I need the required tool arguments before I can perform that task.",
+                store_memory=False,
+                execution_plan=plan,
+                step_results=_step_results(plan, default_status="blocked"),
             )
         planned = [
             {"name": item.name, "arguments": item.arguments}
             for item in route.tool_calls
         ]
         audits = execute_planned_mock_tools(planned)
+        step_results = _step_results(plan, default_status="not_run")
+        for result, audit in zip(step_results, audits):
+            result["status"] = audit["status"]
+            result["output"] = audit["result"]
         return _direct_answer_payload(
             request,
             route,
             answer=summarize_planned_tool_results(audits),
             tool_calls=audits,
+            store_memory=False,
+            execution_plan=plan,
+            step_results=step_results,
+        )
+
+    if not route.requires_retrieval:
+        return await _generate_without_retrieval(
+            request,
+            route,
+            recent_memory_hits,
         )
     context_capacity = request.context_capacity or RAG_CONTEXT_LIMIT
     retrieval_request = request
@@ -615,7 +1099,8 @@ async def _generate_answer(
     # Memory shares the final context budget; live retrieval may over-fetch so
     # document filters still have enough candidates.
     context_limit = min(request.limit, context_capacity, RAG_CONTEXT_LIMIT)
-    memory_hits = _recall_memory(request)[: context_limit // 2]
+    memory_quota = max(1, context_limit // 2) if request.use_memory else 0
+    memory_hits = _recall_memory(request)[:memory_quota]
     candidate_limit = 20 if request.regex_filter or request.prompt_guard else context_limit
     context_hits = memory_hits + collect_context_hits(
         results,
@@ -628,7 +1113,7 @@ async def _generate_answer(
         context_hits, blocked_documents = filter_prompt_injection_hits(
             context_hits
         )
-        context_hits = context_hits[:context_capacity]
+        context_hits = context_hits[:context_limit]
     if request.prompt_guard:
         try:
             (
@@ -644,7 +1129,16 @@ async def _generate_answer(
                 detail=f"Prompt Guard is unavailable: {exc}",
             ) from exc
         blocked_documents.extend(prompt_guard_blocks)
-        context_hits = context_hits[:context_capacity]
+        context_hits = context_hits[:context_limit]
+    plan = _execution_plan(route)
+    if not context_hits:
+        empty_step_results = _step_results(plan, default_status="skipped")
+        for result in empty_step_results:
+            if result["kind"] == "retrieve":
+                result["status"] = "completed"
+                result["output"] = "No usable context remained after retrieval and filtering."
+            elif result["kind"] == "generate":
+                result["status"] = "blocked"
     if not context_hits:
         return {
             "service": SERVICE_NAME,
@@ -653,12 +1147,15 @@ async def _generate_answer(
             "mode": request.mode,
             "intent": route.intent,
             "route_confidence": route.confidence,
+            "retrieval_policy": request.retrieval_policy,
             "route_reason": route.reason,
             "retrieval_skipped": False,
             "planned_tool_calls": [
                 {"name": item.name, "arguments": item.arguments}
                 for item in route.tool_calls
             ],
+            "execution_plan": plan,
+            "step_results": empty_step_results,
             "regex_filter": request.regex_filter,
             "prompt_guard": request.prompt_guard,
             "detector_latency_ms": detector_latency_ms,
@@ -672,7 +1169,7 @@ async def _generate_answer(
             "blocked_documents": blocked_documents,
             "spotlighting_documents": [],
             "results": results,
-            "memory": [],
+            "memory": [hit.model_dump() for hit in memory_hits],
         }
 
     include_trust_metadata = request.mode == "defended"
@@ -694,7 +1191,18 @@ async def _generate_answer(
         )
 
     try:
-        if request.enable_mock_tools:
+        allow_context_tool_calls = (
+            request.allow_context_tool_calls
+            or (
+                isinstance(request, ExperimentEvaluationRequest)
+                and request.attack_type == "tool_call"
+            )
+        )
+        if (
+            request.enable_mock_tools
+            and not route.tool_calls
+            and allow_context_tool_calls
+        ):
             mode_system_prompt = (
                 DEFENDED_SYSTEM_PROMPT
                 if request.mode == "defended"
@@ -726,13 +1234,84 @@ async def _generate_answer(
                 }
             )
             tool_calls = []
+        generation_steps = [
+            step for step in plan if step["kind"] == "generate"
+        ]
+        generated_outputs: dict[str, str] = {}
+        if generation_steps:
+            generated_outputs[generation_steps[0]["id"]] = generated_answer
+        if len(generation_steps) > 1:
+            followup_chain = build_direct_step_chain(
+                _rag_model(request.answer_model)
+            )
+            for step in generation_steps[1:]:
+                dependency_outputs = {
+                    dependency: generated_outputs[dependency]
+                    for dependency in step["depends_on"]
+                    if dependency in generated_outputs
+                }
+                if not dependency_outputs:
+                    dependency_outputs = {"previous_result": generated_answer}
+                generated_answer = await followup_chain.ainvoke({
+                    "question": request.query,
+                    "instruction": (
+                        step.get("instruction")
+                        or "Complete the next requested transformation."
+                    ),
+                    "dependencies": json.dumps(
+                        dependency_outputs,
+                        ensure_ascii=False,
+                    ),
+                    "memory": _memory_prompt(memory_hits),
+                })
+                generated_outputs[step["id"]] = generated_answer
     except Exception as exc:
         raise HTTPException(
             status_code=503,
             detail=f"Ollama model {request.answer_model} is unavailable: {exc}",
         ) from exc
+    if route.tool_calls:
+        if not request.enable_mock_tools:
+            generated_answer = (
+                f"{generated_answer}\n\n"
+                "The remaining step requires a local mock tool, but tools are disabled."
+            )
+            tool_calls = []
+        else:
+            planned_calls = [
+                {"name": item.name, "arguments": item.arguments}
+                for item in route.tool_calls
+            ]
+            tool_calls = execute_planned_mock_tools(
+                planned_calls,
+                last_answer=generated_answer,
+            )
+            generated_answer = (
+                f"{generated_answer}\n\n"
+                f"{summarize_planned_tool_results(tool_calls)}"
+            )
 
-    if request.use_memory:
+    step_results = _step_results(plan, default_status="completed")
+    audit_index = 0
+    for result in step_results:
+        if result["kind"] == "retrieve":
+            result["output"] = f"{len(context_hits)} context item(s) selected."
+        elif result["kind"] == "generate":
+            if result["step_id"] in generated_outputs:
+                result["output"] = generated_outputs[result["step_id"]]
+        elif result["kind"] == "tool":
+            if audit_index < len(tool_calls):
+                result["status"] = tool_calls[audit_index]["status"]
+                result["output"] = tool_calls[audit_index]["result"]
+                audit_index += 1
+            elif not request.enable_mock_tools:
+                result["status"] = "skipped"
+                result["output"] = "Mock tools are disabled."
+            else:
+                result["status"] = "not_run"
+
+
+    if request.use_memory and not route.tool_calls and not tool_calls:
         _memory().append(
             session_id=request.session_id,
             query=request.query,
@@ -751,12 +1330,15 @@ async def _generate_answer(
         "mode": request.mode,
         "intent": route.intent,
         "route_confidence": route.confidence,
+        "retrieval_policy": request.retrieval_policy,
         "route_reason": route.reason,
         "retrieval_skipped": False,
         "planned_tool_calls": [
             {"name": item.name, "arguments": item.arguments}
             for item in route.tool_calls
         ],
+        "execution_plan": plan,
+        "step_results": step_results,
         "regex_filter": request.regex_filter,
         "prompt_guard": request.prompt_guard,
         "detector_latency_ms": detector_latency_ms,

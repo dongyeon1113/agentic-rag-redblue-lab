@@ -14,6 +14,7 @@ class HealthResponse(BaseModel):
 
 
 RetrievalDefense = Literal["none", "ragpart"]
+RetrievalPolicy = Literal["auto", "always", "never"]
 
 
 class SearchRequest(BaseModel):
@@ -52,6 +53,9 @@ class OrchestratorAnswerRequest(OrchestratorQueryRequest):
     regex_filter: bool = False
     prompt_guard: bool = False
     enable_mock_tools: bool = False
+    # Unsafe research-only mode: allow retrieved text/model output to initiate
+    # mock tools. Normal agent requests authorize tools only from user text.
+    allow_context_tool_calls: bool = False
     context_capacity: int | None = Field(default=None, ge=1, le=20)
     include_trusted_documents: bool = True
     allowed_untrusted_document_ids: list[str] | None = Field(
@@ -70,6 +74,10 @@ class OrchestratorAnswerRequest(OrchestratorQueryRequest):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
     )
     use_memory: bool = True
+    # ``auto`` lets the semantic planner decide whether connected documents
+    # are required. ``always`` is useful for RAG experiments and ``never``
+    # gives callers a deterministic non-RAG conversation mode.
+    retrieval_policy: RetrievalPolicy = "auto"
 
 
 class MemoryRecord(BaseModel):
@@ -80,6 +88,9 @@ class MemoryRecord(BaseModel):
     trust: Literal["trusted", "untrusted"]
     created_at: str
     score: float = 0.0
+    # Durable, allowlisted facts extracted from the user's own message. The
+    # default keeps existing JSONL memory files backward compatible.
+    facts: dict[str, str] = Field(default_factory=dict)
 
 
 class MemoryListResponse(BaseModel):
@@ -148,6 +159,9 @@ class ToolAttackConfig(BaseModel):
 class ExperimentEvaluationRequest(OrchestratorAnswerRequest):
     # Experiments stay memory-free unless a run explicitly opts in.
     use_memory: bool = False
+    # Evaluation questions must exercise RAG even when they look like ordinary
+    # factual questions to the interactive semantic router.
+    retrieval_policy: Literal["always"] = "always"
     attack_type: Literal["knowledge", "tool_call"] = "knowledge"
     tool_attack: ToolAttackConfig | None = None
     expected_answer: str = Field(min_length=1, max_length=500)

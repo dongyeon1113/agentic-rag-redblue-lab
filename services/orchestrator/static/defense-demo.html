@@ -424,10 +424,12 @@
       limit: 20,
       context_capacity: counts.capacity,
       include_trusted_documents: false,
+      retrieval_policy: "always",
       mode: "vulnerable",
       regex_filter: byId("regex").checked,
       prompt_guard: byId("promptGuard").checked,
       enable_mock_tools: byId("enableMockTools").checked,
+      allow_context_tool_calls: byId("enableMockTools").checked,
       allowed_untrusted_document_ids: [...normalIds, ...attackIds]
     };
 
