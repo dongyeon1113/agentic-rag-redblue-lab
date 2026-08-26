@@ -631,6 +631,8 @@ async def run_poisoned_rag_experiment(
                 count=candidate_count,
                 word_count=request.passage_word_count,
                 max_trials=request.max_generation_trials,
+                composition=request.poison_composition,
+                style=request.poison_generation_style,
             )
         except Exception as exc:
             raise HTTPException(
@@ -795,6 +797,8 @@ async def run_poisoned_rag_experiment(
             passage_word_count=request.passage_word_count,
             cleanup_before_run=request.cleanup_before_run,
             candidate_multiplier=request.candidate_multiplier,
+            poison_composition=request.poison_composition,
+            poison_generation_style=request.poison_generation_style,
         ),
         metrics=metrics,
         baseline=baseline,
