@@ -50,8 +50,10 @@
     .metric:first-child{border-color:#ff5d7366;background:#ff5d730b}.metric span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em}.metric strong{display:block;font-size:20px;margin-top:8px;letter-spacing:-.03em}
     .metric-details{grid-column:1/-1;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.metric-details>summary{padding:10px 12px;cursor:pointer;color:var(--muted);font-size:10px;font-weight:700}.secondary-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 8px 8px}
     .answers{order:4;display:grid;grid-template-columns:1fr 1fr;gap:8px}.answer{padding:18px}
+    .answers.triple{grid-template-columns:1fr 1fr 1fr}
     .answer h3{font-size:13px;margin:0 0 14px}.answer pre{font:13px/1.6 inherit;white-space:pre-wrap;margin:0;color:#d9e3f7}
-    .baseline{border-left:4px solid var(--blue)}.attacked{border-left:4px solid var(--red)}
+    .baseline{border-left:4px solid var(--blue)}.attacked{border-left:4px solid var(--red)}.defended{border-left:4px solid var(--green)}
+    @media(max-width:900px){.answers.triple{grid-template-columns:1fr}}
     .section{padding:18px}.section-title{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
     .section-title h3{margin:0;font-size:14px}.status{font-size:11px;color:var(--muted)}
     .docs{display:grid;gap:8px}.doc{background:#0d1014;border:1px solid var(--line);border-radius:8px;padding:13px}
@@ -160,9 +162,10 @@
         <div class="metric"><span>전체 실행시간</span><strong id="mTotalTime">—</strong></div>
         <details class="metric-details"><summary>검색 품질 상세 지표 보기</summary><div class="secondary-metrics"><div class="metric"><span>Retrieval Precision</span><strong id="mPrecision">—</strong></div><div class="metric"><span>Retrieval Recall</span><strong id="mRecall">—</strong></div><div class="metric"><span>Retrieval F1</span><strong id="mF1">—</strong></div></div></details>
       </section>
-      <section class="answers">
+      <section class="answers triple">
         <article class="card answer baseline"><h3>① 주입 전 Baseline</h3><pre id="baselineAnswer">실험 전입니다.</pre></article>
-        <article class="card answer attacked"><h3>② PoisonedRAG 적용 결과</h3><pre id="attackedAnswer">실험 전입니다.</pre></article>
+        <article class="card answer attacked"><h3>② PoisonedRAG 적용 결과 (vulnerable)</h3><pre id="attackedAnswer">실험 전입니다.</pre></article>
+        <article class="card answer defended"><h3>③ 동일 조건, 방어 모드 (defended)</h3><pre id="defendedAnswer">실험 전입니다.</pre></article>
       </section>
       <section class="card section">
         <div class="section-title"><h3>N별 반복 평가</h3><span class="status" id="benchmarkStatus">0·1·3·5개를 연속 실행합니다.</span></div>
@@ -308,6 +311,7 @@
     $("mPrecision").textContent=pct(r.metrics.retrieval_precision); $("mRecall").textContent=pct(r.metrics.retrieval_recall); $("mF1").textContent=pct(r.metrics.retrieval_f1);
     $("mTotalTime").textContent=`${r.metrics.total_seconds.toFixed(1)}초`;
     $("baselineAnswer").textContent=r.baseline.answer; $("attackedAnswer").textContent=r.attacked.answer;
+    loadDefendedAnswer(r.baseline.query, r.metrics.top_k);
     $("docStatus").textContent=`후보 ${r.generated_candidate_count} · 검증 ${r.verified_poison_count} · 선별·주입 ${r.injected_poison_count} · Top-K 진입 ${r.metrics.poison_in_top_k}`;
     const trustedCount=corpusCounts?.trusted;
     const runCorpus=trustedCount==null?'확인 중':`${(trustedCount+r.injected_poison_count).toLocaleString()}개 (정상 ${trustedCount.toLocaleString()} + Poison ${r.injected_poison_count})`;
@@ -322,6 +326,19 @@
     $("retrievedDocs").innerHTML=(r.attacked.documents||[]).length?r.attacked.documents.map((d,index)=>`
       <article class="retrieved ${d.trust==='untrusted'?'poison':''}"><header><strong>#${index+1} ${escapeHtml(d.document_id)}</strong><span class="${d.trust==='untrusted'?'fail':'ok'}">${d.trust==='untrusted'?'POISON':'TRUSTED'} · ${d.score.toFixed(4)}</span></header><pre>${escapeHtml(d.text)}</pre></article>`).join(""):'<div class="empty">검색된 문서가 없습니다.</div>';
     loadCorpusStatus();
+  }
+  async function loadDefendedAnswer(query,limit){
+    // Poison documents from the run just above are still in the DB
+    // (untrusted, only cleared when the next run starts), so this queries
+    // the exact same poisoned corpus with the trust filter turned on --
+    // a live vulnerable-vs-defended comparison, not a separate experiment.
+    $("defendedAnswer").textContent="방어 모드로 재확인 중…";
+    try{
+      const r=await api("/answer",{method:"POST",body:JSON.stringify({query,sources:["local_db"],limit,mode:"defended",use_memory:false})});
+      $("defendedAnswer").textContent=r.answer;
+    }catch(err){
+      $("defendedAnswer").textContent=`확인 실패: ${err.message}`;
+    }
   }
   function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
   async function loadAgentStatuses(){
