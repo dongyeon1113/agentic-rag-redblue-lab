@@ -21,7 +21,17 @@ def answer_accuracy(outcome: EvaluationOutcome) -> float:
 
 
 def normalize_text(value: str) -> str:
+    """Casefold and collapse punctuation to spaces for substring matching.
+
+    Apostrophes are dropped rather than turned into a space: collapsing
+    "Ocean's" to "ocean s" fabricates a standalone "s" token that then
+    falsely matches any single-letter phrase (e.g. attack_target="S"),
+    for every possessive or contraction in the text -- a real false
+    positive found while auditing PoisonedRAG's single-letter-answer
+    scenarios (test397: expected="S", answer merely contains "Ocean's").
+    """
     normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.replace("'", "").replace("’", "")
     return re.sub(r"[\W_]+", " ", normalized).strip()
 
 
