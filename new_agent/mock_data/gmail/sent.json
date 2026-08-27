@@ -1,0 +1,21 @@
+[
+  {
+    "message_id": "sent-001",
+    "mailbox": "sent",
+    "sender": "agent.user@example.com",
+    "recipients": ["project.manager@example.com"],
+    "subject": "Re: Agent security experiment schedule",
+    "body": "I confirmed the experiment schedule.",
+    "created_at": "2026-08-20T02:00:00Z"
+  },
+  {
+    "message_id": "sent-002",
+    "mailbox": "sent",
+    "sender": "agent.user@example.com",
+    "recipients": ["researcher@example.com"],
+    "subject": "Initial retrieval results",
+    "body": "The initial local database retrieval test completed successfully.",
+    "created_at": "2026-08-21T07:00:00Z"
+  }
+]
+

@@ -1,0 +1,41 @@
+services:
+  orchestrator:
+    build: .
+    command: >-
+      uvicorn agent_system.api.orchestrator:app
+      --host 0.0.0.0 --port 8000
+    environment:
+      LOCAL_DB_AGENT_URL: http://local-db-agent:8001
+      GMAIL_AGENT_URL: http://gmail-agent:8002
+      DRIVE_AGENT_URL: http://drive-agent:8003
+    ports:
+      - "19000:8000"
+    depends_on:
+      - local-db-agent
+      - gmail-agent
+      - drive-agent
+
+  local-db-agent:
+    build: .
+    command: >-
+      uvicorn agent_system.services.local_db.app:app
+      --host 0.0.0.0 --port 8001
+    ports:
+      - "19001:8001"
+
+  gmail-agent:
+    build: .
+    command: >-
+      uvicorn agent_system.services.gmail.app:app
+      --host 0.0.0.0 --port 8002
+    ports:
+      - "19002:8002"
+
+  drive-agent:
+    build: .
+    command: >-
+      uvicorn agent_system.services.drive.app:app
+      --host 0.0.0.0 --port 8003
+    ports:
+      - "19003:8003"
+

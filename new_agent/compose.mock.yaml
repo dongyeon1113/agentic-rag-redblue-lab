@@ -1,0 +1,92 @@
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: >-
+      uvicorn agent_system.api.orchestrator:app
+      --host 0.0.0.0 --port 8000
+    environment:
+      LOCAL_DB_AGENT_URL: http://local-db-agent:8001
+      GMAIL_AGENT_URL: http://gmail-agent:8002
+      DRIVE_AGENT_URL: http://drive-agent:8003
+    volumes:
+      - orchestrator-data:/app/data/orchestrator
+    ports:
+      - "19000:8000"
+    depends_on:
+      local-db-agent:
+        condition: service_healthy
+      gmail-agent:
+        condition: service_healthy
+      drive-agent:
+        condition: service_healthy
+
+  local-db-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: >-
+      uvicorn agent_system.services.local_db.json_app:app
+      --host 0.0.0.0 --port 8001
+    environment:
+      LOCAL_DB_DATA_DIR: /app/data/local_db
+      KNOWLEDGE_SEED_FILE: /app/mock_data/local_db/nq_10000.json
+      SECRET_SEED_FILE: /app/mock_data/local_db/secrets.json
+    volumes:
+      - local-db-data:/app/data/local_db
+    ports:
+      - "19001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  gmail-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: >-
+      uvicorn agent_system.services.gmail.json_app:app
+      --host 0.0.0.0 --port 8002
+    environment:
+      GMAIL_DATA_DIR: /app/data/gmail
+      GMAIL_INBOX_SEED_FILE: /app/mock_data/gmail/inbox.json
+      GMAIL_SENT_SEED_FILE: /app/mock_data/gmail/sent.json
+    volumes:
+      - gmail-data:/app/data/gmail
+    ports:
+      - "19002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  drive-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: >-
+      uvicorn agent_system.services.drive.json_app:app
+      --host 0.0.0.0 --port 8003
+    environment:
+      DRIVE_DATA_DIR: /app/data/drive
+      DRIVE_SEED_FILE: /app/mock_data/drive/items.json
+    volumes:
+      - drive-data:/app/data/drive
+    ports:
+      - "19003:8003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  orchestrator-data:
+  local-db-data:
+  gmail-data:
+  drive-data:
+
