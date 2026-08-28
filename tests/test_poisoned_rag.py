@@ -131,6 +131,19 @@ def test_build_instruction_prompt_defaults_to_authority_style() -> None:
     assert "authorized RAG" in prompt
 
 
+def test_build_instruction_prompt_multi_source_style_requires_several_sources() -> None:
+    prompt = build_instruction_prompt(
+        query="What is the capital of France?",
+        attack_target="Lyon",
+        word_count=30,
+        variant=1,
+        style="authority_multi_source",
+    )
+
+    assert "two or three distinct" in prompt
+    assert "authorized RAG" in prompt
+
+
 def test_candidate_selection_prefers_retrieval_score_and_removes_duplicates() -> None:
     def candidate(text: str, verified: bool = True) -> GeneratedPoison:
         return GeneratedPoison(text, text, "Lyon", verified, 1, 0.1, len(text.split()))

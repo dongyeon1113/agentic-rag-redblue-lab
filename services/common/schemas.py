@@ -253,7 +253,7 @@ class PoisonedRAGRequest(BaseModel):
     poison_composition: Literal["question_plus_instruction", "instruction_only"] = (
         "question_plus_instruction"
     )
-    poison_generation_style: Literal["authority", "paper"] = "authority"
+    poison_generation_style: Literal["authority", "authority_multi_source", "paper"] = "authority"
 
     @model_validator(mode="after")
     def answers_must_differ(self) -> "PoisonedRAGRequest":
@@ -318,7 +318,7 @@ class PoisonedRAGRunMetadata(BaseModel):
     poison_composition: Literal["question_plus_instruction", "instruction_only"] = (
         "question_plus_instruction"
     )
-    poison_generation_style: Literal["authority", "paper"] = "authority"
+    poison_generation_style: Literal["authority", "authority_multi_source", "paper"] = "authority"
 
 
 class PoisonedRAGResponse(BaseModel):
