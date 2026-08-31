@@ -1,14 +1,7 @@
 .git
-.github
 .venv
+.pytest_cache
 __pycache__
 *.pyc
-.pytest_cache
-.env
-datasets/raw
-# ~1.6GB; bind-mounted at runtime into the services that need it instead of
-# baked into every image built from this Dockerfile (see compose.yaml).
-datasets/generated/nq_2681468.json
 data
-models
-.huggingface
+tests

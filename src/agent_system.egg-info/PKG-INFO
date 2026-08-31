@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: agent-system
+Version: 0.1.0
+Summary: Single-orchestrator, multi-tool-service agent skeleton
+Requires-Python: >=3.11
+Requires-Dist: fastapi<1,>=0.116
+Requires-Dist: httpx<1,>=0.28
+Requires-Dist: pydantic<3,>=2.10
+Requires-Dist: uvicorn<1,>=0.35
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.4; extra == "dev"

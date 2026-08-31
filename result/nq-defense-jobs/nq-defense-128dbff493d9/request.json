@@ -1,0 +1,32 @@
+{
+  "scenario_count": 5,
+  "repetitions": 5,
+  "seed": 12,
+  "poison_counts": [
+    3
+  ],
+  "top_k": 5,
+  "max_generation_trials": 10,
+  "passage_word_count": 30,
+  "generation_temperature": 1.0,
+  "candidate_multiplier": 2,
+  "include_query_prefix": false,
+  "defenses": [
+    {
+      "name": "조합1",
+      "regex": false,
+      "prompt_guard": true,
+      "spotlighting": [],
+      "methods": [
+        "prompt_guard"
+      ]
+    }
+  ],
+  "selected_scenario_ids": [
+    "test20",
+    "test70",
+    "test327",
+    "test228",
+    "test426"
+  ]
+}

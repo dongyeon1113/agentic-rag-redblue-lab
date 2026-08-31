@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-08-22T06:37:27.597321+00:00",
+  "completed_keys": [
+    "test20:3:1"
+  ],
+  "attack_runs": [],
+  "rows": [],
+  "failures": [
+    {
+      "attack_key": "test20:3:1",
+      "scenario_id": "test20",
+      "poison_count": 3,
+      "repetition": 1,
+      "error_type": "RuntimeError",
+      "detail": "No verified and selected poison documents"
+    }
+  ]
+}

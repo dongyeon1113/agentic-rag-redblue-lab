@@ -1,5 +1,0 @@
-services:
-  drive-agent:
-    volumes:
-      - drive-chroma:/app/data/chroma
-      - ${GOOGLE_SERVICE_ACCOUNT_FILE:?Set GOOGLE_SERVICE_ACCOUNT_FILE}:/run/secrets/google-service-account.json:ro

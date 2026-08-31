@@ -1,5 +1,0 @@
-services:
-  gmail-agent:
-    volumes:
-      - gmail-chroma:/app/data/chroma
-      - ${GOOGLE_GMAIL_TOKEN_FILE:?Set GOOGLE_GMAIL_TOKEN_FILE}:/run/secrets/google-gmail-token.json:ro

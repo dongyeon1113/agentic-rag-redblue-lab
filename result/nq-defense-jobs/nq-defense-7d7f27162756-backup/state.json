@@ -1,0 +1,16 @@
+{
+  "job_id": "nq-defense-7d7f27162756",
+  "status": "interrupted",
+  "created_at": "2026-08-17T16:00:21.830879+00:00",
+  "updated_at": "2026-08-17T21:31:03.068376+00:00",
+  "completed": 44,
+  "total": 100,
+  "successful": 42,
+  "failed": 2,
+  "current": {
+    "scenario_id": "test369",
+    "poison_count": 3,
+    "repetition": 1
+  },
+  "error": null
+}

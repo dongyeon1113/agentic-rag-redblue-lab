@@ -1,0 +1,82 @@
+services:
+  ollama-embedding-model-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.complete
+    environment:
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-180}
+      MEMORY_CHROMA_COLLECTION: ${MEMORY_CHROMA_COLLECTION:-long-term-memory-nomic-v1}
+      CHROMA_INDEX_BATCH_SIZE: ${CHROMA_INDEX_BATCH_SIZE:-500}
+      AUTO_MEMORY_ENABLED: ${AUTO_MEMORY_ENABLED:-true}
+      AUTO_MEMORY_MIN_CONFIDENCE: ${AUTO_MEMORY_MIN_CONFIDENCE:-0.8}
+      AUTO_MEMORY_MAX_ITEMS: ${AUTO_MEMORY_MAX_ITEMS:-3}
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+
+  local-db-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.complete
+    command: >-
+      uvicorn agent_system.services.local_db.vector_app:app
+      --host 0.0.0.0 --port 8001
+    environment:
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-180}
+      CHROMA_PERSIST_DIRECTORY: /app/data/local_db/chroma
+      CHROMA_COLLECTION: ${LOCAL_DB_CHROMA_COLLECTION:-local-db-nomic-v2}
+      CHROMA_INDEX_BATCH_SIZE: ${CHROMA_INDEX_BATCH_SIZE:-500}
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+    healthcheck:
+      start_period: 20m
+
+  gmail-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.complete
+    command: >-
+      uvicorn agent_system.services.gmail.vector_app:app
+      --host 0.0.0.0 --port 8002
+    environment:
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-180}
+      CHROMA_PERSIST_DIRECTORY: /app/data/gmail/chroma
+      CHROMA_COLLECTION: ${GMAIL_CHROMA_COLLECTION:-gmail-nomic-v1}
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+
+  drive-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.complete
+    command: >-
+      uvicorn agent_system.services.drive.vector_app:app
+      --host 0.0.0.0 --port 8003
+    environment:
+      OLLAMA_EMBEDDING_BASE_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-180}
+      CHROMA_PERSIST_DIRECTORY: /app/data/drive/chroma
+      CHROMA_COLLECTION: ${DRIVE_CHROMA_COLLECTION:-drive-nomic-v1}
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+

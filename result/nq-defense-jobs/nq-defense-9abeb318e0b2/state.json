@@ -1,0 +1,11 @@
+{
+  "job_id": "nq-defense-9abeb318e0b2",
+  "status": "completed",
+  "created_at": "2026-08-22T06:39:27.872789+00:00",
+  "updated_at": "2026-08-22T06:41:19.311457+00:00",
+  "completed": 5,
+  "total": 5,
+  "successful": 4,
+  "failed": 1,
+  "current": null
+}

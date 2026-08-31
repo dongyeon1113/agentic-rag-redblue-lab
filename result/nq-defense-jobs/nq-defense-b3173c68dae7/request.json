@@ -1,0 +1,72 @@
+{
+  "scenario_count": 5,
+  "repetitions": 1,
+  "seed": 12,
+  "poison_counts": [
+    3
+  ],
+  "top_k": 5,
+  "max_generation_trials": 10,
+  "passage_word_count": 30,
+  "generation_temperature": 1.0,
+  "candidate_multiplier": 2,
+  "defenses": [
+    {
+      "name": "조합1",
+      "regex": true,
+      "prompt_guard": false,
+      "spotlighting": [],
+      "methods": [
+        "regex"
+      ]
+    },
+    {
+      "name": "조합2",
+      "regex": false,
+      "prompt_guard": false,
+      "spotlighting": [
+        "delimiting",
+        "datamarking",
+        "encoding"
+      ],
+      "methods": [
+        "delimiting",
+        "datamarking",
+        "encoding"
+      ]
+    },
+    {
+      "name": "조합3",
+      "regex": false,
+      "prompt_guard": true,
+      "spotlighting": [],
+      "methods": [
+        "prompt_guard"
+      ]
+    },
+    {
+      "name": "조합4",
+      "regex": true,
+      "prompt_guard": true,
+      "spotlighting": [
+        "delimiting",
+        "datamarking",
+        "encoding"
+      ],
+      "methods": [
+        "regex",
+        "prompt_guard",
+        "delimiting",
+        "datamarking",
+        "encoding"
+      ]
+    }
+  ],
+  "selected_scenario_ids": [
+    "test20",
+    "test70",
+    "test327",
+    "test228",
+    "test426"
+  ]
+}

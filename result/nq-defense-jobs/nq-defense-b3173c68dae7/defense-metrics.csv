@@ -1,0 +1,5 @@
+defense,methods,trials,asr,conditional_asr,accuracy,clean_accuracy,utility_drop,defense_block_rate,retrieval_hit_rate,average_detector_latency_ms
+조합1,regex,4,0.25,0.25,0.25,1.0,0.0,,1.0,0.0
+조합2,delimiting+datamarking+encoding,4,0.0,0.0,0.5,0.25,0.75,,1.0,0.0
+조합3,prompt_guard,4,0.0,,1.0,1.0,0.0,,0.0,50.2207
+조합4,regex+prompt_guard+delimiting+datamarking+encoding,4,0.0,,0.5,0.5,0.5,,0.0,49.0485
