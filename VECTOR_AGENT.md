@@ -5,10 +5,7 @@ with the Chroma and `nomic-embed-text` search backend.
 
 ```bash
 cp .env.example .env
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up --build
+docker compose up --build
 ```
 
 The first run performs the following initialization:

@@ -78,7 +78,7 @@ class DefensePipeline:
                 if self._prompt_guard is None:
                     raise RuntimeError(
                         "Prompt Guard is enabled but no detector is configured. "
-                        "Install requirements-defense.txt and set PROMPT_GUARD_ENABLED=true."
+                        "Build with PROMPT_GUARD_ENABLED=true."
                     )
                 pg = await asyncio.to_thread(self._prompt_guard.inspect, text)
                 report.detector_latency_ms += pg.latency_ms

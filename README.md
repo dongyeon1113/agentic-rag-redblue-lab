@@ -37,10 +37,7 @@ Gmail, Drive 검색은 JSON 원본 데이터를 Chroma에 인덱싱한 벡터 �
 저장소 루트에서:
 
 ```bash
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up --build
+docker compose up --build
 ```
 
 로컬 Python 환경에서는 각 터미널에서 다음을 실행합니다.

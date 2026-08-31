@@ -1,2 +1,0 @@
-"""Gmail tool service."""
-

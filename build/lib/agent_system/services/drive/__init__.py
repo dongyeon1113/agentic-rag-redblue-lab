@@ -1,2 +1,0 @@
-"""Google Drive tool service."""
-

@@ -1,0 +1,260 @@
+services:
+  drive-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROMPT_GUARD: ${PROMPT_GUARD_ENABLED:-false}
+    command: uvicorn agent_system.services.drive.vector_app:app --host 0.0.0.0 --port 8003
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      - DRIVE_DATA_DIR=/app/data/drive
+      - DRIVE_SEED_FILE=/app/mock_data/drive/items.json
+      - CHROMA_COLLECTION=${DRIVE_CHROMA_COLLECTION:-drive-nomic-v1}
+      - CHROMA_PERSIST_DIRECTORY=/app/data/drive/chroma
+      - EMBEDDING_TIMEOUT_SECONDS=${EMBEDDING_TIMEOUT_SECONDS:-180}
+      - OLLAMA_EMBEDDING_BASE_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    healthcheck:
+      interval: 5s
+      retries: 20
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8003/health')
+      timeout: 3s
+    user: ${HOST_UID:-1000}:${HOST_GID:-1000}
+    volumes:
+      - bind:
+          create_host_path: true
+        source: ./data/drive
+        target: /app/data/drive
+        type: bind
+  experiment-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROMPT_GUARD: ${PROMPT_GUARD_ENABLED:-false}
+    command: uvicorn gui.app:app --host 0.0.0.0 --port 8010
+    depends_on:
+      local-db-agent:
+        condition: service_healthy
+        required: true
+      orchestrator:
+        condition: service_healthy
+        required: true
+    environment:
+      EXPERIMENT_API_TOKEN: ${EXPERIMENT_API_TOKEN:-local-experiment-token}
+      EXPERIMENT_TIMEOUT_SECONDS: ${EXPERIMENT_TIMEOUT_SECONDS:-300}
+      LOCAL_DB_URL: http://local-db-agent:8001
+      ORCHESTRATOR_URL: http://orchestrator:8000
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8010/health')
+      timeout: 5s
+    ports:
+      - ${HOST_BIND:-127.0.0.1}:${EXPERIMENT_GUI_PORT:-19010}:8010
+    user: ${HOST_UID:-1000}:${HOST_GID:-1000}
+  gmail-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROMPT_GUARD: ${PROMPT_GUARD_ENABLED:-false}
+    command: uvicorn agent_system.services.gmail.vector_app:app --host 0.0.0.0 --port 8002
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      - GMAIL_DATA_DIR=/app/data/gmail
+      - GMAIL_INBOX_SEED_FILE=/app/mock_data/gmail/inbox.json
+      - GMAIL_SENT_SEED_FILE=/app/mock_data/gmail/sent.json
+      - CHROMA_COLLECTION=${GMAIL_CHROMA_COLLECTION:-gmail-nomic-v1}
+      - CHROMA_PERSIST_DIRECTORY=/app/data/gmail/chroma
+      - EMBEDDING_TIMEOUT_SECONDS=${EMBEDDING_TIMEOUT_SECONDS:-180}
+      - OLLAMA_EMBEDDING_BASE_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    healthcheck:
+      interval: 5s
+      retries: 20
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8002/health')
+      timeout: 3s
+    user: ${HOST_UID:-1000}:${HOST_GID:-1000}
+    volumes:
+      - bind:
+          create_host_path: true
+        source: ./data/gmail
+        target: /app/data/gmail
+        type: bind
+  local-db-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROMPT_GUARD: ${PROMPT_GUARD_ENABLED:-false}
+    command: uvicorn agent_system.services.local_db.vector_app:app --host 0.0.0.0 --port 8001
+    depends_on:
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      - EXPERIMENT_API_TOKEN=${EXPERIMENT_API_TOKEN:-local-experiment-token}
+      - KNOWLEDGE_SEED_FILE=/app/mock_data/local_db/nq_10000.json
+      - LOCAL_DB_DATA_DIR=/app/data/local_db
+      - SECRET_SEED_FILE=/app/mock_data/local_db/secrets.json
+      - CHROMA_COLLECTION=${LOCAL_DB_CHROMA_COLLECTION:-local-db-nomic-v2}
+      - CHROMA_INDEX_BATCH_SIZE=${CHROMA_INDEX_BATCH_SIZE:-500}
+      - CHROMA_PERSIST_DIRECTORY=/app/data/local_db/chroma
+      - EMBEDDING_TIMEOUT_SECONDS=${EMBEDDING_TIMEOUT_SECONDS:-180}
+      - OLLAMA_EMBEDDING_BASE_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    healthcheck:
+      interval: 5s
+      retries: 20
+      start_period: 20m
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8001/health')
+      timeout: 3s
+    user: ${HOST_UID:-1000}:${HOST_GID:-1000}
+    volumes:
+      - bind:
+          create_host_path: true
+        source: ./data/local_db
+        target: /app/data/local_db
+        type: bind
+  ollama:
+    healthcheck:
+      interval: 10s
+      retries: 20
+      start_period: 10s
+      test:
+        - CMD
+        - ollama
+        - list
+      timeout: 5s
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    ports:
+      - ${HOST_BIND:-127.0.0.1}:${OLLAMA_PORT:-19004}:11434
+    restart: unless-stopped
+    volumes:
+      - source: ollama-models
+        target: /root/.ollama
+        type: volume
+        volume: {}
+  ollama-embedding-model-init:
+    command:
+      - pull
+      - ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: true
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    restart: "no"
+  ollama-model-init:
+    command:
+      - pull
+      - ${OLLAMA_MODEL:-qwen3:8b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: true
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:6345fbc18bd73a1e16404be681dbc6fd291a027cab43ed541abe78c4c81051b0}
+    restart: "no"
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_PROMPT_GUARD: ${PROMPT_GUARD_ENABLED:-false}
+    command: uvicorn agent_system.api.agent:app --host 0.0.0.0 --port 8000
+    depends_on:
+      drive-agent:
+        condition: service_healthy
+        required: true
+      gmail-agent:
+        condition: service_healthy
+        required: true
+      local-db-agent:
+        condition: service_healthy
+        required: true
+      ollama-embedding-model-init:
+        condition: service_completed_successfully
+        required: true
+      ollama-model-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      - AGENT_PERMISSIONS=${AGENT_PERMISSIONS:-document:read,gmail:read,drive:read}
+      - DRIVE_AGENT_URL=http://drive-agent:8003
+      - GMAIL_AGENT_URL=http://gmail-agent:8002
+      - LOCAL_DB_AGENT_URL=http://local-db-agent:8001
+      - MAX_TOOL_ITERATIONS=${MAX_TOOL_ITERATIONS:-8}
+      - MEMORY_DATA_DIR=/app/data/orchestrator
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - OLLAMA_NUM_PREDICT=${OLLAMA_NUM_PREDICT:-1024}
+      - OLLAMA_TEMPERATURE=${OLLAMA_TEMPERATURE:-0}
+      - OLLAMA_THINK=${OLLAMA_THINK:-true}
+      - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-120}
+      - AUTO_MEMORY_ENABLED=${AUTO_MEMORY_ENABLED:-true}
+      - AUTO_MEMORY_MAX_ITEMS=${AUTO_MEMORY_MAX_ITEMS:-3}
+      - AUTO_MEMORY_MIN_CONFIDENCE=${AUTO_MEMORY_MIN_CONFIDENCE:-0.8}
+      - CHROMA_INDEX_BATCH_SIZE=${CHROMA_INDEX_BATCH_SIZE:-500}
+      - EMBEDDING_TIMEOUT_SECONDS=${EMBEDDING_TIMEOUT_SECONDS:-180}
+      - MEMORY_CHROMA_COLLECTION=${MEMORY_CHROMA_COLLECTION:-long-term-memory-nomic-v1}
+      - OLLAMA_EMBEDDING_BASE_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - PROMPT_GUARD_DEVICE=${PROMPT_GUARD_DEVICE:-cpu}
+      - PROMPT_GUARD_ENABLED=${PROMPT_GUARD_ENABLED:-false}
+      - PROMPT_GUARD_MODEL=${PROMPT_GUARD_MODEL:-meta-llama/Prompt-Guard-86M}
+      - PROMPT_GUARD_THRESHOLD=${PROMPT_GUARD_THRESHOLD:-0.9}
+    healthcheck:
+      interval: 10s
+      retries: 20
+      start_period: 10s
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')
+      timeout: 5s
+    ports:
+      - ${HOST_BIND:-127.0.0.1}:${ORCHESTRATOR_PORT:-19000}:8000
+    user: ${HOST_UID:-1000}:${HOST_GID:-1000}
+    volumes:
+      - bind:
+          create_host_path: true
+        source: ./data/orchestrator
+        target: /app/data/orchestrator
+        type: bind
+      - source: huggingface-models
+        target: /app/.cache/huggingface
+        type: volume
+        volume: {}
+volumes:
+  huggingface-models: null
+  ollama-models: null

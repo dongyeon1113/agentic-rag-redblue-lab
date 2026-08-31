@@ -4,10 +4,7 @@
 
 ```bash
 cp .env.example .env
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up --build
+docker compose up --build
 ```
 
 첫 실행에서는 Ollama가 `qwen3:8b` 모델을 내려받으므로 시간이 걸릴 수 있습니다.
@@ -191,10 +188,7 @@ AUTO_MEMORY_MAX_ITEMS=3
 ## Reset mock state
 
 ```bash
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  down -v
+docker compose down -v
 ```
 
 이 명령은 실행 중 생성·수정된 작업 데이터와 Ollama 모델 볼륨까지 삭제합니다.

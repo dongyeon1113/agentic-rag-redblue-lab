@@ -13,25 +13,19 @@
 기본 방어 모델(Regex, Spotlighting, RAGPart, 간접 동작 차단):
 
 ```bash
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up -d --build
+docker compose up -d --build
 ```
 
 GUI: `http://localhost:19010`
 
 GUI는 기존 `nq-defense-demo`의 단일 paired 실험 흐름을 따릅니다. NQ 100개 시나리오와 한국어 데모 중 하나를 고르고, 공격 유형·도구 목표·Poison 문서 수·Top-K·Q+I 포함 여부와 방어 조합을 지정할 수 있습니다. 한 번 실행하면 동일 공격 문서에 대해 취약 모드와 방어 모드를 비교하고, 검색 문서·공격 문서 적중·차단 건수·승인 요청·도구 결과·방어 finding을 나란히 표시합니다. 장시간 백그라운드 벤치마크 실행기는 이 버전에 포함하지 않습니다.
 
-Meta Prompt Guard까지 사용하는 경우 모델 라이선스를 승인하고 `HF_TOKEN`을 설정한 뒤 전용 override를 추가합니다.
+Meta Prompt Guard까지 사용하는 경우 모델 라이선스를 승인하고 `HF_TOKEN`과 `PROMPT_GUARD_ENABLED=true`를 설정한 뒤 이미지를 다시 빌드합니다.
 
 ```bash
 export HF_TOKEN=YOUR_TOKEN
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  -f compose.defense.override.yaml \
-  up -d --build
+export PROMPT_GUARD_ENABLED=true
+docker compose up -d --build
 ```
 
 Prompt Guard 이미지는 PyTorch 때문에 기본 이미지보다 큽니다. 한국어 탐지 품질은 별도로 측정해야 합니다.

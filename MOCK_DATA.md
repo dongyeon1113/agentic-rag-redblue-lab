@@ -18,10 +18,7 @@ mock_data/
 실행:
 
 ```bash
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up --build
+docker compose up --build
 ```
 
 컨테이너는 이미지에 포함된 `mock_data/`를 읽기 전용 seed처럼 사용합니다.
@@ -37,14 +34,8 @@ docker compose \
 JSON seed를 수정한 뒤 새 상태로 다시 실험하려면 기존 작업 볼륨도 초기화합니다.
 
 ```bash
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  down -v
-docker compose \
-  -f compose.agent.yaml \
-  -f compose.vector.override.yaml \
-  up --build
+docker compose down -v
+docker compose up --build
 ```
 
 `down -v`는 이 Compose 프로젝트의 작업 볼륨을 삭제하므로 기존 실험 변경 사항도
