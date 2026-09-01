@@ -66,7 +66,8 @@ class OllamaChatModel:
             response = await self._http.get(f"{self.base_url}/api/tags")
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise OllamaUnavailableError(str(exc)) from exc
+            detail = str(exc) or repr(exc)
+            raise OllamaUnavailableError(detail) from exc
         return [str(item["name"]) for item in response.json().get("models", [])]
 
     async def chat(
@@ -104,7 +105,8 @@ class OllamaChatModel:
                 f"Ollama returned {exc.response.status_code}: {detail}"
             ) from exc
         except httpx.HTTPError as exc:
-            raise OllamaUnavailableError(str(exc)) from exc
+            detail = str(exc) or repr(exc)
+            raise OllamaUnavailableError(detail) from exc
 
         raw_message = response.json().get("message")
         if not isinstance(raw_message, dict):
@@ -122,4 +124,3 @@ class OllamaChatModel:
             think=False,
         )
         return output_schema.model_validate_json(response.content)
-

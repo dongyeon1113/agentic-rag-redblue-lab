@@ -147,6 +147,23 @@ def test_natural_language_tool_loop_returns_answer_from_tool_result() -> None:
     )
 
 
+def test_empty_model_response_is_retried_before_fallback() -> None:
+    model = ScriptedToolModel([
+        OllamaMessage(content="", thinking="Still reasoning"),
+        OllamaMessage(content="A useful final answer."),
+    ])
+
+    response = asyncio.run(_agent(model, []).run(AgentQueryRequest(
+        user_id="user-1",
+        session_id="session-1",
+        query="Give me a short greeting.",
+    )))
+
+    assert response.answer == "A useful final answer."
+    assert response.iterations == 2
+    assert "previous response was empty" in model.requests[1][-1]["content"]
+
+
 def test_external_write_pauses_and_resumes_after_approval() -> None:
     gateway = RecordingGmailGateway()
     model = ScriptedToolModel([

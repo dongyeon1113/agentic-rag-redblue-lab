@@ -71,6 +71,14 @@ agent-cli --base-url http://localhost:19000 --user-id user-1
 `http://localhost:19010`에서 열 수 있습니다. 기존 `nq-defense-demo`처럼 NQ 시나리오를 선택하고 공격 문서 수, Top-K, Q+I, 공격 유형과 방어 조합을 설정해 취약/방어 결과를 한 화면에서 비교합니다. 자세한 구조와 Prompt Guard 실행법은
 `SECURITY_EXPERIMENTS.md`를 참고하십시오.
 
+## AgentDojo benchmark
+
+`ToolCallingAgent` 자체를 AgentDojo 공식 suite에서 평가할 수 있습니다. 모든 suite
+도구 권한을 부여한 격리 환경에서 baseline과 Regex, Prompt Guard, Spotlighting
+프로필의 benign utility, utility under attack, targeted ASR을 비교합니다. GUI는
+파일 기반 서버 작업, 진행 조회, 중단·재개와 결과 다운로드를 지원합니다. 설치와
+실행 방법은 `AGENTDOJO_BENCHMARK.md`를 참고하십시오.
+
 ## Tool API
 
 Docker 내부의 모든 도구 서비스는 공통 엔드포인트를 제공합니다.

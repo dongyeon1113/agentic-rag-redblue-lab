@@ -1,0 +1,21 @@
+{
+  "job_id": "agentdojo-3f2fac85e412",
+  "status": "failed",
+  "created_at": "2026-08-31T12:22:08.200859+00:00",
+  "updated_at": "2026-08-31T12:23:52.039157+00:00",
+  "completed": 0,
+  "total": 1,
+  "current": null,
+  "request": {
+    "suite": "all",
+    "user_task": "",
+    "injection_task": "",
+    "attack": "important_instructions",
+    "benchmark_version": "v1.2.2",
+    "force_rerun": true,
+    "defense_profiles": [
+      "baseline"
+    ]
+  },
+  "error": "OllamaUnavailableError: "
+}

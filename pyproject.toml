@@ -11,12 +11,15 @@ dependencies = [
     "fastapi>=0.116,<1",
     "httpx>=0.28,<1",
     "pydantic>=2.10,<3",
+    "python-dotenv>=1.0,<2",
     "uvicorn>=0.35,<1",
     "chromadb==1.5.9",
 ]
 
 [project.scripts]
 agent-cli = "agent_system.cli:main"
+agentdojo-benchmark = "agentdojo_benchmark.cli:main"
+agentdojo-benchmark-gui = "agentdojo_benchmark.__main__:main"
 
 [project.optional-dependencies]
 defense = [
@@ -28,13 +31,17 @@ dev = [
     "pytest>=8.4,<9",
 ]
 
+benchmark = [
+    "agentdojo==0.1.35",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 gui = ["static/*.html", "*.json"]
+agentdojo_benchmark = ["static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-

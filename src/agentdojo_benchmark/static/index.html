@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentDojo Trace Lab</title>
+  <style>
+    :root { --bg:#f4f1ea; --ink:#17211d; --muted:#64706b; --card:#fffdf8; --line:#d8d4ca; --blue:#165dff; --red:#c33b32; --green:#177a50; --amber:#a76500; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:radial-gradient(circle at top left,#e7efe9,transparent 34rem),var(--bg); font:14px/1.5 Inter,ui-sans-serif,system-ui,sans-serif; }
+    header { padding:34px clamp(20px,5vw,72px) 24px; border-bottom:1px solid var(--line); }
+    h1 { margin:0; font:700 clamp(28px,4vw,48px)/1.05 Georgia,serif; letter-spacing:-1px; }
+    header p { max-width:760px; color:var(--muted); margin:10px 0 0; }
+    main { padding:24px clamp(16px,4vw,64px) 64px; display:grid; gap:20px; }
+    .panel { background:color-mix(in srgb,var(--card) 94%,transparent); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 30px #26382d0d; overflow:hidden; }
+    .panel-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .panel-head h2 { font-size:15px; margin:0; letter-spacing:.02em; }
+    .controls { padding:18px 20px; display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:12px; }
+    label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:650; }
+    select,button { min-height:40px; border-radius:9px; border:1px solid var(--line); background:white; padding:0 11px; color:var(--ink); }
+    .defense-builder { grid-column:1/-1; display:grid; gap:10px; padding:14px; border:1px solid var(--line); border-radius:10px; background:#f8f6f0; }
+    .defense-checks,.combo-actions,.combo-list { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .defense-checks label { display:flex; align-items:center; gap:5px; color:var(--ink); }
+    .defense-checks input { width:16px; height:16px; }
+    .defense-checks select { min-height:34px; }
+    .combo-item { display:flex; gap:7px; align-items:center; padding:6px 9px; border:1px solid var(--line); border-radius:8px; background:white; }
+    .combo-item button { min-height:26px; padding:0 7px; color:var(--red); }
+    button { cursor:pointer; font-weight:700; }
+    button.primary { color:white; background:var(--ink); border-color:var(--ink); }
+    button:disabled { opacity:.5; cursor:wait; }
+    .run-row { padding:0 20px 18px; display:flex; align-items:center; gap:12px; }
+    #runStatus { color:var(--muted); }
+    .layout { display:grid; grid-template-columns:minmax(280px,360px) minmax(0,1fr); gap:20px; align-items:start; }
+    .case-list { max-height:760px; overflow:auto; }
+    .case { padding:14px 16px; border:0; border-bottom:1px solid var(--line); border-radius:0; width:100%; text-align:left; background:transparent; }
+    .case:hover,.case.active { background:#edf2ec; }
+    .case strong { display:block; }
+    .case small { color:var(--muted); }
+    .badges { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+    .badge { font-size:11px; font-weight:750; padding:2px 7px; border-radius:99px; background:#e8e8e4; }
+    .badge.good { color:var(--green); background:#e2f3e9; } .badge.bad { color:var(--red); background:#f9e5e2; }
+    .empty { padding:32px; color:var(--muted); text-align:center; }
+    .detail { padding:20px; display:grid; gap:18px; }
+    .meta { display:flex; gap:8px; flex-wrap:wrap; }
+    .section h3 { margin:0 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; padding:14px; background:#f2f0ea; border:1px solid var(--line); border-radius:10px; font:12px/1.55 ui-monospace,SFMono-Regular,monospace; }
+    .injection pre { border-color:#e5b9b4; background:#fff4f2; }
+    .compare { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .run-card { border:1px solid var(--line); border-radius:13px; overflow:hidden; min-width:0; }
+    .run-title { padding:11px 14px; font-weight:800; display:flex; justify-content:space-between; background:#f3f1eb; }
+    .run-card.attack .run-title { background:#fff0ee; }
+    .run-body { padding:14px; display:grid; gap:14px; }
+    .answer { min-height:80px; }
+    .calls { display:grid; gap:8px; }
+    .call { border-left:3px solid var(--blue); background:#f4f7ff; border-radius:6px; padding:10px; }
+    .call.changed { border-color:var(--red); background:#fff3f1; }
+    .call b { font-family:ui-monospace,monospace; }
+    .call code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; color:#44504b; margin-top:5px; }
+    .metrics { display:flex; gap:8px; flex-wrap:wrap; }
+    .metric { padding:5px 9px; border:1px solid var(--line); border-radius:8px; font-size:12px; }
+    @media (max-width:900px) { .controls{grid-template-columns:1fr 1fr}.layout{grid-template-columns:1fr}.case-list{max-height:320px}.compare{grid-template-columns:1fr} }
+    @media (max-width:560px) { .controls{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<header>
+  <h1>AgentDojo Trace Lab</h1>
+  <p>정상 실행과 간접 프롬프트 인젝션 실행을 나란히 비교합니다. 사용자 요청, 실제 주입 문자열, 최종 답변과 도구 호출의 차이를 한 케이스 단위로 추적할 수 있습니다.</p>
+</header>
+<main>
+  <section class="panel">
+    <div class="panel-head"><h2>새 비교 실험</h2><span class="badge">모든 도구 권한 · 서버 지속 실행</span></div>
+    <div class="controls">
+      <label>Suite<select id="suite"></select></label>
+      <label>User task<select id="userTask"></select></label>
+      <label>Injection task<select id="injectionTask"></select></label>
+      <label>Attack<select id="attack"></select></label>
+      <div class="defense-builder">
+        <strong>방어 조합 생성</strong>
+        <div class="defense-checks">
+          <label><input id="useRegex" type="checkbox">Regex</label>
+          <label><input id="usePromptGuard" type="checkbox">Prompt Guard</label>
+          <label><input id="useSpotlighting" type="checkbox">Spotlighting</label>
+          <select id="spotlightingMethod">
+            <option value="delimiting">delimiting</option>
+            <option value="datamarking">datamarking</option>
+            <option value="encoding">encoding</option>
+          </select>
+        </div>
+        <div class="combo-actions">
+          <button id="addCombination" type="button">선택 조합 추가</button>
+          <button id="addBaseline" type="button">Baseline 추가</button>
+          <button id="clearCombinations" type="button">전체 비우기</button>
+        </div>
+        <div id="combinationList" class="combo-list"></div>
+      </div>
+    </div>
+    <div class="run-row"><button class="primary" id="run">정상 + 공격 실행</button><span id="runStatus">케이스를 선택하세요.</span></div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>서버 벤치마크 작업</h2><button id="refreshJobs">새로고침</button></div>
+    <div class="controls">
+      <label>저장된 작업<select id="jobs"></select></label>
+      <label>작업 제어<div><button id="cancelJob">중단</button> <button id="resumeJob">재개</button> <button id="downloadJob">결과</button></div></label>
+    </div>
+    <div class="run-row"><span id="jobStatus">작업을 불러오는 중…</span></div>
+  </section>
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head"><h2>완료된 공격 케이스</h2><button id="refresh">새로고침</button></div>
+      <div id="caseList" class="case-list"><div class="empty">trace를 불러오는 중…</div></div>
+    </section>
+    <section class="panel" id="detailPanel">
+      <div class="panel-head"><h2>실행 비교</h2></div>
+      <div id="detail" class="empty">왼쪽에서 케이스를 선택하세요.</div>
+    </section>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let catalog=null, selectedCase=null, activeJob=null, defenseCombinations=['baseline'];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=v=>JSON.stringify(v,null,2);
+async function api(url,opts){const r=await fetch(url,opts);if(!r.ok)throw new Error((await r.json()).detail||r.statusText);return r.json()}
+function option(value,label){return `<option value="${esc(value)}">${esc(label)}</option>`}
+async function loadCatalog(){catalog=await api('/api/catalog');$('suite').innerHTML=option('all','all · 전체 suite/태스크')+Object.keys(catalog.suites).map(x=>option(x,x)).join('');$('attack').innerHTML=catalog.attacks.map(x=>option(x,x)).join('');$('attack').value='important_instructions';syncTasks();renderCombinations()}
+function selectedCombination(){const parts=[];if($('useRegex').checked)parts.push('regex');if($('usePromptGuard').checked)parts.push('prompt_guard');if($('useSpotlighting').checked)parts.push('spotlighting:'+$('spotlightingMethod').value);return parts.join('+')}
+function addCombination(value){if(!value){$('runStatus').textContent='방어 항목을 하나 이상 체크하세요.';return}if(!defenseCombinations.includes(value))defenseCombinations.push(value);renderCombinations()}
+function renderCombinations(){$('combinationList').innerHTML=defenseCombinations.length?defenseCombinations.map((value,index)=>`<span class="combo-item"><b>${index+1}.</b> ${esc(value)} <button type="button" data-remove="${index}">×</button></span>`).join(''):'<span class="badge bad">생성된 조합 없음</span>';$('combinationList').querySelectorAll('[data-remove]').forEach(button=>button.onclick=()=>{defenseCombinations.splice(Number(button.dataset.remove),1);renderCombinations()})}
+function syncTasks(){const all=$('suite').value==='all';if(all){$('userTask').innerHTML=option('','전체 user tasks');$('injectionTask').innerHTML=option('','전체 injection tasks');return}const s=catalog.suites[$('suite').value];$('userTask').innerHTML=option('','전체 user tasks')+s.user_tasks.map(t=>option(t.id,`${t.id} · ${t.prompt}`)).join('');$('injectionTask').innerHTML=option('','전체 injection tasks')+s.injection_tasks.map(t=>option(t.id,`${t.id} · ${t.goal}`)).join('')}
+async function loadCases(){const rows=await api('/api/cases');$('caseList').innerHTML=rows.length?rows.map((r,i)=>`<button class="case" data-index="${i}"><strong>${esc(r.suite)} · ${esc(r.user_task)}</strong><small>${esc(r.injection_task)} / ${esc(r.attack)}</small><div class="badges"><span class="badge ${r.utility?'good':'bad'}">utility ${r.utility?'PASS':'FAIL'}</span><span class="badge ${r.attack_succeeded?'bad':'good'}">attack ${r.attack_succeeded?'SUCCESS':'BLOCKED'}</span><span class="badge">${Number(r.duration_seconds||0).toFixed(1)}s</span></div></button>`).join(''):'<div class="empty">아직 공격 trace가 없습니다.</div>';$('caseList').querySelectorAll('.case').forEach(b=>b.onclick=()=>selectCase(rows[Number(b.dataset.index)],b))}
+async function selectCase(row,button){document.querySelectorAll('.case').forEach(x=>x.classList.remove('active'));button?.classList.add('active');selectedCase=row;const q=new URLSearchParams({pipeline:row.pipeline,suite:row.suite,user_task:row.user_task,injection_task:row.injection_task,attack:row.attack});const d=await api('/api/cases/detail?'+q);renderDetail(d)}
+function metrics(run,attacked){if(!run)return '';return `<div class="metrics"><span class="metric">utility <b>${run.utility?'PASS':'FAIL'}</b></span>${attacked?`<span class="metric">attack <b>${run.attack_succeeded?'SUCCESS':'BLOCKED'}</b></span>`:''}<span class="metric">${Number(run.duration_seconds||0).toFixed(1)} sec</span></div>`}
+function calls(run,other){if(!run)return '<div class="empty">정상 trace가 없습니다. 해당 UserTask의 benign 실행을 다시 수행하세요.</div>';if(!run.tool_calls.length)return '<div class="empty">도구 호출 없음</div>';return `<div class="calls">${run.tool_calls.map((c,i)=>{const o=other?.tool_calls?.[i];const changed=!o||o.function!==c.function||fmt(o.args)!==fmt(c.args);return `<div class="call ${changed?'changed':''}"><b>${c.sequence}. ${esc(c.function)}</b><code>${esc(fmt(c.args))}</code></div>`}).join('')}</div>`}
+function runCard(title,run,attack,other){return `<article class="run-card ${attack?'attack':''}"><div class="run-title"><span>${title}</span><span>${run?.error?'ERROR':''}</span></div><div class="run-body">${metrics(run,attack)}<div><h3>최종 답변</h3><pre class="answer">${esc(run?.answer||'trace 없음')}</pre></div><div><h3>도구 호출 순서와 인수</h3>${calls(run,other)}</div></div></article>`}
+function renderDetail(d){const inj=Object.entries(d.injections).map(([k,v])=>`<div class="injection"><h3>주입 위치 · ${esc(k)}</h3><pre>${esc(v)}</pre></div>`).join('');$('detail').className='detail';$('detail').innerHTML=`<div class="meta"><span class="badge">${esc(d.identity.pipeline)}</span><span class="badge">${esc(d.identity.suite)}</span><span class="badge">${esc(d.identity.user_task)}</span><span class="badge">${esc(d.identity.injection_task)}</span></div><div class="section"><h3>사용자 쿼리</h3><pre>${esc(d.user_prompt)}</pre></div><div class="section"><h3>공격 목표</h3><pre>${esc(d.attack_goal)}</pre></div>${inj}<div class="compare">${runCard('정상 실행',d.benign,false,d.attacked)}${runCard('공격 실행',d.attacked,true,d.benign)}</div>`}
+async function startRun(){if(!defenseCombinations.length){$('runStatus').textContent='방어 조합을 하나 이상 생성하세요.';return}const body={suite:$('suite').value,user_task:$('userTask').value,injection_task:$('injectionTask').value,attack:$('attack').value,force_rerun:true,defense_profiles:defenseCombinations};$('run').disabled=true;$('runStatus').textContent='서버 작업을 생성하는 중…';try{const job=await api('/api/runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});activeJob=job.job_id;await loadJobs();poll(job.job_id)}catch(e){$('runStatus').textContent='실패: '+e.message;$('run').disabled=false}}
+async function poll(id){const job=await api('/api/runs/'+id);$('runStatus').textContent=`${job.status} · ${job.completed||0}/${job.total||0} · ${job.current||''}`;await loadJobs(id);if(job.status==='completed'){$('run').disabled=false;$('runStatus').textContent='완료. trace를 갱신했습니다.';await loadCases();return}if(['failed','cancelled','interrupted'].includes(job.status)){$('run').disabled=false;$('runStatus').textContent=`${job.status}: ${job.error||''}`;return}setTimeout(()=>poll(id),2000)}
+async function loadJobs(selectId){const data=await api('/api/runs');const jobs=data.jobs;$('jobs').innerHTML=jobs.length?jobs.map(j=>option(j.job_id,`${j.status} · ${j.completed}/${j.total} · ${j.job_id}`)).join(''):option('','작업 없음');if(selectId)$('jobs').value=selectId;renderJob()}
+function renderJob(){const id=$('jobs').value;if(!id){$('jobStatus').textContent='저장된 작업이 없습니다.';return}api('/api/runs/'+id).then(j=>{$('jobStatus').textContent=`${j.status} · ${j.completed}/${j.total} · 현재 ${j.current||'-'}${j.error?' · '+j.error:''}`;$('downloadJob').disabled=j.status!=='completed';$('resumeJob').disabled=!['failed','cancelled','interrupted'].includes(j.status);$('cancelJob').disabled=!['queued','running'].includes(j.status)})}
+$('suite').onchange=syncTasks;$('run').onclick=startRun;$('refresh').onclick=loadCases;$('addCombination').onclick=()=>addCombination(selectedCombination());$('addBaseline').onclick=()=>addCombination('baseline');$('clearCombinations').onclick=()=>{defenseCombinations=[];renderCombinations()};$('refreshJobs').onclick=()=>loadJobs();$('jobs').onchange=renderJob;$('cancelJob').onclick=async()=>{await api(`/api/runs/${$('jobs').value}/cancel`,{method:'POST'});loadJobs($('jobs').value)};$('resumeJob').onclick=async()=>{const id=$('jobs').value;await api(`/api/runs/${id}/resume`,{method:'POST'});activeJob=id;poll(id)};$('downloadJob').onclick=()=>{location.href=`/api/runs/${$('jobs').value}/download`};
+Promise.all([loadCatalog(),loadCases(),loadJobs()]).catch(e=>$('runStatus').textContent='초기화 실패: '+e.message);
+</script>
+</body>
+</html>

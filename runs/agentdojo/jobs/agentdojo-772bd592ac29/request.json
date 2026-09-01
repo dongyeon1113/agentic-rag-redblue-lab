@@ -1,0 +1,11 @@
+{
+  "suite": "workspace",
+  "user_task": "user_task_0",
+  "injection_task": "injection_task_0",
+  "attack": "important_instructions",
+  "benchmark_version": "v1.2.2",
+  "force_rerun": true,
+  "defense_profiles": [
+    "spotlighting:encoding"
+  ]
+}

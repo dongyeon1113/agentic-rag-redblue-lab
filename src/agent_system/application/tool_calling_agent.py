@@ -114,6 +114,7 @@ class AgentRunState:
     pending_tasks: list[tuple[str, AgentTask]] = field(default_factory=list)
     sensitive_data_accessed: bool = False
     routing_retries: int = 0
+    empty_response_retries: int = 0
     defense_report: DefenseReport = field(default_factory=DefenseReport)
 
 
@@ -250,7 +251,7 @@ class ToolCallingAgent:
         required = {
             task.task_id
             for _, task in state.pending_tasks
-            if state.capabilities[self._tool_name(task.executor, task.action)].approval_required
+            if self._capability_for_task(state, task).approval_required
         }
         if not required.issubset(request.approved_task_ids):
             missing = sorted(required - request.approved_task_ids)
@@ -288,6 +289,17 @@ class ToolCallingAgent:
             state.messages.append(self._assistant_message(message))
 
             if not message.tool_calls:
+                if not message.content.strip() and state.empty_response_retries < 2:
+                    state.empty_response_retries += 1
+                    state.messages.append({
+                        "role": "system",
+                        "content": (
+                            "Your previous response was empty. Continue the task now: "
+                            "call an appropriate tool if data is needed, otherwise return "
+                            "a concise final answer. Do not return an empty response."
+                        ),
+                    })
+                    continue
                 if self._should_retry_tool_routing(state):
                     state.routing_retries += 1
                     state.messages.append({
@@ -570,7 +582,11 @@ class ToolCallingAgent:
         tools: list[dict[str, Any]] = []
         mapping: dict[str, Capability] = {}
         for capability in capabilities:
-            name = cls._tool_name(capability.executor, capability.action)
+            name = capability.public_name or cls._tool_name(
+                capability.executor, capability.action
+            )
+            if name in mapping:
+                raise ValueError(f"Duplicate public tool name: {name}")
             mapping[name] = capability
             tools.append({
                 "type": "function",
@@ -584,6 +600,23 @@ class ToolCallingAgent:
                 },
             })
         return tools, mapping
+
+    @staticmethod
+    def _capability_for_task(
+        state: AgentRunState,
+        task: AgentTask,
+    ) -> Capability:
+        matches = [
+            capability
+            for capability in state.capabilities.values()
+            if capability.executor == task.executor
+            and capability.action == task.action
+        ]
+        if len(matches) != 1:
+            raise LookupError(
+                f"Capability not found for {task.executor}/{task.action}"
+            )
+        return matches[0]
 
     def _should_retry_tool_routing(self, state: AgentRunState) -> bool:
         return (
@@ -617,4 +650,3 @@ class ToolCallingAgent:
     @staticmethod
     def _tool_name(executor: str, action: str) -> str:
         return f"{executor}__{action}"
-

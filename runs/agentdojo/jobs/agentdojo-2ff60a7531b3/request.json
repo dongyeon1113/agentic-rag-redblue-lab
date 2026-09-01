@@ -1,0 +1,14 @@
+{
+  "suite": "all",
+  "user_task": "",
+  "injection_task": "",
+  "attack": "important_instructions",
+  "benchmark_version": "v1.2.2",
+  "force_rerun": true,
+  "defense_profiles": [
+    "baseline",
+    "regex",
+    "spotlighting:datamarking",
+    "prompt_guard"
+  ]
+}

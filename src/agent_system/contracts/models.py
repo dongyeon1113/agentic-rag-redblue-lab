@@ -86,6 +86,7 @@ class TaskResult(BaseModel):
 class Capability(BaseModel):
     executor: str
     action: str
+    public_name: str | None = None
     description: str
     permission: str
     risk: RiskLevel
