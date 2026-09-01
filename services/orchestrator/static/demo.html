@@ -83,6 +83,18 @@
       font:12px/1.55 ui-monospace,SFMono-Regular,monospace;color:#bfcdea}
     .source-badge{padding:3px 8px;border-radius:99px;background:#253a5d;color:#cfe0ff;font-size:9px;font-weight:900}
     .source-statuses{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+    #liveToggleDemo{order:0;border-color:var(--line-strong)}
+    .toggle-row{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:14px}
+    .switch-field{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700}
+    .switch{position:relative;display:inline-block;width:44px;height:24px;flex:none}
+    .switch input{opacity:0;width:0;height:0;position:absolute}
+    .slider{position:absolute;inset:0;cursor:pointer;background:#2a303a;border-radius:999px;transition:background .15s}
+    .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .15s}
+    .switch input:checked+.slider{background:var(--red)}
+    .switch input:checked+.slider.defense{background:var(--green)}
+    .switch input:checked+.slider::before{transform:translateX(20px)}
+    .switch-state{color:var(--muted);min-width:30px}
+    .switch input:disabled+.slider{opacity:.5;cursor:wait}
     @media(max-width:1180px){.layout{grid-template-columns:310px minmax(0,1fr)}.pipeline{grid-template-columns:1fr 1fr}.stage:nth-of-type(2){border-right:0}.stage:nth-of-type(-n+2){border-bottom:1px solid var(--line)}.evidence-grid{grid-template-columns:1fr}}
     @media(max-width:850px){.layout{grid-template-columns:1fr;padding:14px}aside.card{position:static}.pipeline{grid-template-columns:1fr 1fr}.metrics{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:650px){.top{padding:12px 14px}.corpus-status{width:100%;margin-left:0}.layout{padding:10px}.answers,.benchmark{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.stage{border-right:0;border-bottom:1px solid var(--line)}.metrics{grid-template-columns:repeat(2,1fr)}.audit{grid-template-columns:1fr}.section-title{align-items:flex-start;flex-direction:column}}
@@ -143,6 +155,20 @@
         <div class="source-statuses" id="agentStatuses"></div>
         <div class="source-results" id="sourceResults"><div class="empty">검색어를 입력하면 연결된 소스의 문서가 표시됩니다.</div></div>
         </div></details>
+      </section>
+      <section class="card section" id="liveToggleDemo">
+        <div class="section-title"><h3>실시간 공격/방어 토글</h3><span class="status" id="liveDemoStatus">공격 OFF · 방어 OFF — 정상 corpus 상태입니다</span></div>
+        <div class="toggle-row">
+          <label class="switch-field">공격 (Poison 주입)
+            <span class="switch"><input type="checkbox" id="attackToggle"><span class="slider"></span></span>
+            <span class="switch-state" id="attackState">OFF</span>
+          </label>
+          <label class="switch-field">방어 (Trust 필터)
+            <span class="switch"><input type="checkbox" id="defenseToggle"><span class="slider defense"></span></span>
+            <span class="switch-state" id="defenseState">OFF</span>
+          </label>
+        </div>
+        <article class="card answer baseline" id="liveAnswerCard"><h3>현재 질문(Q)에 대한 실시간 답변</h3><pre id="liveAnswer" aria-live="polite">토글을 조작하면 이 질문에 대한 답변이 즉시 갱신됩니다.</pre></article>
       </section>
       <section class="card pipeline" id="ragPipeline">
         <div class="stage"><small>01 · BASELINE</small><strong id="pQuestion">질문 대기</strong><span>Poison 제외 상태로 먼저 답변</span></div><div class="arrow">→</div>
@@ -364,6 +390,69 @@
       (cards.length?cards.join(""):'<div class="empty">일치하는 문서가 없습니다.</div>');
     $("sourceStatus").textContent=`${cards.length}개 문서 가져옴`;
   }
+  let attackOn=false, defenseOn=false, liveDocumentIds=[];
+  function setSwitchPositions(){
+    $("attackToggle").checked=attackOn; $("attackState").textContent=attackOn?"ON":"OFF";
+    $("defenseToggle").checked=defenseOn; $("defenseState").textContent=defenseOn?"ON":"OFF";
+  }
+  function setStatusBanner(){
+    $("liveDemoStatus").textContent = !attackOn ? "공격 OFF — 정상 corpus 상태입니다"
+      : defenseOn ? "🛡️ 공격 ON · 방어 ON — Poison 문서가 Trust 필터로 걸러집니다"
+      : "⚠️ 공격 ON · 방어 OFF — 공격자가 주입한 답변이 그대로 노출됩니다";
+  }
+  function setToggleUI(){
+    setSwitchPositions();setStatusBanner();
+    $("liveAnswerCard").classList.toggle("defended",defenseOn);
+    $("liveAnswerCard").classList.toggle("attacked",attackOn&&!defenseOn);
+    $("liveAnswerCard").classList.toggle("baseline",!attackOn);
+  }
+  function setLiveToggleBusy(on){
+    $("attackToggle").disabled=on; $("defenseToggle").disabled=on;
+  }
+  async function deleteLiveDocuments(){
+    const ids=[...liveDocumentIds];
+    const results=await Promise.allSettled(ids.map(id=>api(`/experiments/documents/${encodeURIComponent(id)}`,{method:"DELETE"})));
+    const failures=results.filter(result=>result.status==="rejected");
+    if(failures.length)throw new Error(`${failures.length}개 Poison 문서를 정리하지 못했습니다`);
+    liveDocumentIds=[];
+  }
+  async function refreshLiveAnswer(){
+    const query=$("query").value; if(!query){return}
+    $("liveAnswer").textContent="답변 생성 중…";
+    try{
+      const r=await api("/answer",{method:"POST",body:JSON.stringify({
+        query,sources:["local_db"],limit:+$("topk").value,
+        mode:defenseOn?"defended":"vulnerable",use_memory:false})});
+      $("liveAnswer").textContent=r.answer;
+    }catch(err){$("liveAnswer").textContent=`오류: ${err.message}`}
+  }
+  $("attackToggle").addEventListener("change",async e=>{
+    const requestedOn=e.target.checked; attackOn=requestedOn; setToggleUI(); setLiveToggleBusy(true);
+    try{
+      if(attackOn){
+        $("liveDemoStatus").textContent="Poison 문서 생성·주입 중… (로컬 모델 생성이라 최대 수 분 걸릴 수 있습니다)";
+        const run=await api("/experiments/poisoned-rag",{method:"POST",body:JSON.stringify(payload(Math.max(1,+$("count").value)))});
+        liveDocumentIds=run.document_ids||[]; renderRun(run);
+      }else{
+        $("liveDemoStatus").textContent="이 토글이 주입한 Poison 문서 정리 중…";
+        await deleteLiveDocuments();
+        await loadCorpusStatus();
+      }
+      await refreshLiveAnswer();
+      setToggleUI();
+    }catch(err){
+      attackOn=!requestedOn; setToggleUI();
+      $("liveDemoStatus").textContent=`오류: ${err.message}`;
+    }finally{
+      setLiveToggleBusy(false);
+    }
+  });
+  $("defenseToggle").addEventListener("change",async e=>{
+    defenseOn=e.target.checked; setToggleUI(); setLiveToggleBusy(true);
+    try{await refreshLiveAnswer()}catch(err){$("liveDemoStatus").textContent=`오류: ${err.message}`}
+    finally{setLiveToggleBusy(false)}
+  });
+  setToggleUI();
   $("sourceSearchForm").addEventListener("submit",async e=>{
     e.preventDefault(); const sources=[];
     if($("sourceGmail").checked)sources.push("gmail"); if($("sourceDrive").checked)sources.push("drive");

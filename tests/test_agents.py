@@ -260,6 +260,29 @@ def test_orchestrator_resets_experiment_documents(monkeypatch) -> None:
     }
 
 
+def test_orchestrator_deletes_one_experiment_document(monkeypatch) -> None:
+    document_id = "poisonedrag-demo-1"
+
+    async def fake_request_json(client, method, url, **kwargs):
+        assert method == "DELETE"
+        assert url.endswith(f"/documents/{document_id}")
+        return {
+            "status": "deleted",
+            "document_id": document_id,
+            "deleted": True,
+            "document_count": 3,
+        }
+
+    monkeypatch.setattr(orchestrator_module, "_request_json", fake_request_json)
+
+    response = TestClient(orchestrator_app).delete(
+        f"/experiments/documents/{document_id}"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] is True
+
+
 def test_defended_mode_overfetches_before_trust_filter(monkeypatch) -> None:
     requested_limits = []
     context_limits = []

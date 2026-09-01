@@ -25,6 +25,7 @@ from services.common.schemas import (
     ExperimentComparisonResponse,
     ExperimentDocumentRequest,
     ExperimentDocumentResponse,
+    ExperimentDeleteResponse,
     ExperimentResetResponse,
     ExperimentEvaluationRequest,
     ExperimentEvaluationResponse,
@@ -303,6 +304,35 @@ async def reset_experiment_documents() -> dict[str, Any]:
                 "DELETE",
                 f"{AGENT_URLS['local_db']}/documents/untrusted",
             )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Local DB agent is unavailable: {exc}",
+        ) from exc
+
+
+@app.delete(
+    "/experiments/documents/{document_id}",
+    response_model=ExperimentDeleteResponse,
+)
+async def delete_experiment_document(document_id: str) -> dict[str, Any]:
+    """Delete one untrusted experiment document without resetting other runs."""
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            return await _request_json(
+                client,
+                "DELETE",
+                f"{AGENT_URLS['local_db']}/documents/{document_id}",
+            )
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail = exc.response.json().get("detail", exc.response.text)
+        except ValueError:
+            detail = exc.response.text
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=detail,
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=503,
