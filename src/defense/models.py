@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class DefenseConfig(BaseModel):
     regex_filter: bool = False
     prompt_guard: bool = False
+    task_shield: bool = False
     spotlighting: list[Literal["delimiting", "datamarking", "encoding"]] = Field(
         default_factory=list
     )
@@ -18,7 +19,9 @@ class DefenseConfig(BaseModel):
 class DefenseFinding(BaseModel):
     defense: str
     record_id: str
-    action: Literal["blocked", "transformed", "reranked", "action_blocked"]
+    action: Literal[
+        "blocked", "flagged", "transformed", "reranked", "action_blocked"
+    ]
     reason: str
     metadata: dict = Field(default_factory=dict)
 
@@ -29,6 +32,12 @@ class DefenseReport(BaseModel):
     blocked_records: int = 0
     transformed_records: int = 0
     indirect_actions_blocked: int = 0
+    taskshield_checks: int = 0
+    taskshield_user_tasks: list[str] = Field(default_factory=list)
+    taskshield_blocked_calls: int = 0
+    taskshield_flagged_instructions: int = 0
+    taskshield_feedback_messages: int = 0
+    taskshield_checker_failures: int = 0
     detector_latency_ms: float = 0.0
     untrusted_data_seen: bool = False
     findings: list[DefenseFinding] = Field(default_factory=list)

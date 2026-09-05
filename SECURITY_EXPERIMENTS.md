@@ -2,7 +2,7 @@
 
 ## 구성
 
-- `defense/`: 검색 결과가 LLM에 전달되기 전 실행되는 Regex, Prompt Guard, Spotlighting, RAGPart와 간접 쓰기 차단
+- `defense/`: 검색 결과가 LLM에 전달되기 전 실행되는 Regex, Prompt Guard, TaskShield, Spotlighting, RAGPart와 간접 쓰기 차단
 - `attack/`: PoisonedRAG 지식 오염, 간접 tool-call injection, AgentPoison형 trigger 생성·평가·실행기
 - `gui/`: 공격 문서 주입, 취약/방어 비교, 계측 결과 표시 웹 앱
 
@@ -10,7 +10,7 @@
 
 ## 실행
 
-기본 방어 모델(Regex, Spotlighting, RAGPart, 간접 동작 차단):
+기본 방어 모델(TaskShield, Regex, Spotlighting, RAGPart, 간접 동작 차단):
 
 ```bash
 docker compose up -d --build
@@ -42,6 +42,7 @@ Prompt Guard 이미지는 PyTorch 때문에 기본 이미지보다 큽니다. �
   "defense": {
     "regex_filter": true,
     "prompt_guard": false,
+    "task_shield": true,
     "spotlighting": ["delimiting"],
     "ragpart": true,
     "block_indirect_actions": true
@@ -49,7 +50,7 @@ Prompt Guard 이미지는 PyTorch 때문에 기본 이미지보다 큽니다. �
 }
 ```
 
-응답의 `defense_report`에는 검사·차단·변환 건수, 탐지 지연, 문서별 finding이 포함됩니다. 내부 Prompt Guard 점수 전체는 사용자 답변에 노출하지 않습니다.
+응답의 `defense_report`에는 검사·차단·변환 건수, TaskShield 판정·피드백 횟수, 탐지 지연, 문서별 finding이 포함됩니다. 내부 Prompt Guard 점수 전체는 사용자 답변에 노출하지 않습니다.
 
 ## 공격 판정
 

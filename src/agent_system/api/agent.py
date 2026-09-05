@@ -31,7 +31,7 @@ from agent_system.infrastructure.remote_executor import RemoteExecutorClient
 from agent_system.ports.executors import ExecutorRegistry
 from agent_system.ports.memory import MemoryItem
 from agent_system.security.ports import AllowAllAgentGuard
-from defense import DefenseConfig, DefensePipeline
+from defense import DefenseConfig, DefensePipeline, TaskShield
 
 
 class CreateMemoryRequest(BaseModel):
@@ -136,6 +136,11 @@ def create_app(
             defense_pipeline=DefensePipeline(
                 prompt_guard_detector=prompt_guard_detector,
                 embedding=embedding_client,
+                task_shield=TaskShield(
+                    model,
+                    threshold=settings.taskshield_threshold,
+                    fail_closed=settings.taskshield_fail_closed,
+                ),
             ),
             memory_extractor=(
                 LlmMemoryExtractor(
@@ -149,6 +154,9 @@ def create_app(
             guard=AllowAllAgentGuard(),
             pending_runs=PendingRunStore(),
             max_iterations=settings.max_tool_iterations,
+            taskshield_max_feedback_rounds=(
+                settings.taskshield_max_feedback_rounds
+            ),
         )
 
     @asynccontextmanager
@@ -168,6 +176,7 @@ def create_app(
     app.state.executors = executors
     app.state.memory = memory
     app.state.agent_permissions = settings.agent_permissions
+    app.state.taskshield_default = settings.taskshield_enabled
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -209,8 +218,16 @@ def create_app(
 
     @app.post("/v1/agent/query", response_model=AgentRunResponse)
     async def query(request: AgentQueryApiRequest) -> AgentRunResponse:
+        payload = request.model_dump()
+        if (
+            "defense" not in request.model_fields_set
+            and app.state.taskshield_default
+        ):
+            payload["defense"] = request.defense.model_copy(
+                update={"task_shield": True}
+            )
         trusted_request = AgentQueryRequest(
-            **request.model_dump(),
+            **payload,
             permissions=set(app.state.agent_permissions),
         )
         try:

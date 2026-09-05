@@ -15,6 +15,8 @@ curl http://localhost:19000/ready
 ```
 
 도구 라우팅 정확도를 위해 Qwen3 thinking은 기본 활성화됩니다. 필요하면 `.env`에서 끌 수 있습니다.
+TaskShield는 기본 활성화되며 사용자 목표와 무관한 도구 호출을 승인 단계 전에 차단합니다. 상세 설정과 AgentDojo 실험법은 `TASKSHIELD.md`를 참고하십시오.
+
 
 ```text
 OLLAMA_THINK=true

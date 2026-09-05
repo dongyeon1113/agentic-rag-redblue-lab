@@ -91,6 +91,7 @@ def _agent(
     memory_extractor=None,
     memory_contexts=None,
     session_memory=None,
+    verify_completion: bool = False,
 ) -> ToolCallingAgent:
     registry = ExecutorRegistry([
         InProcessExecutorClient(executor) for executor in executors
@@ -106,6 +107,7 @@ def _agent(
         guard=AllowAllAgentGuard(),
         pending_runs=PendingRunStore(),
         memory_extractor=memory_extractor,
+        verify_completion=verify_completion,
     )
 
 
@@ -144,6 +146,51 @@ def test_natural_language_tool_loop_returns_answer_from_tool_result() -> None:
     assert any(
         message["role"] == "tool"
         for message in model.requests[1]
+    )
+
+
+def test_completion_review_continues_an_incomplete_multistep_task() -> None:
+    repository = StaticDocumentRepository([
+        Document(
+            document_id="doc-1",
+            title="Chicago Fire",
+            content="Chicago Fire season four premiered in October 2015.",
+        )
+    ])
+    model = ScriptedToolModel([
+        OllamaMessage(tool_calls=[
+            OllamaToolCall(function=OllamaFunctionCall(
+                name="local_db__document_search",
+                arguments={
+                    "query": "Chicago Fire",
+                    "namespace": "knowledge",
+                    "limit": 3,
+                },
+            ))
+        ]),
+        OllamaMessage(content="I found the document and will summarize it next."),
+        OllamaMessage(
+            content="Chicago Fire season four premiered in October 2015. [doc-1]"
+        ),
+    ])
+    agent = _agent(
+        model,
+        [_executor("local_db", create_db_handlers(repository))],
+        verify_completion=True,
+    )
+
+    response = asyncio.run(agent.run(AgentQueryRequest(
+        user_id="user-1",
+        session_id="completion-review",
+        query="Find and summarize when Chicago Fire season four premiered.",
+    )))
+
+    assert response.iterations == 3
+    assert "October 2015" in response.answer
+    assert any(
+        "Review the candidate answer" in message["content"]
+        for message in model.requests[2]
+        if message["role"] == "system"
     )
 
 

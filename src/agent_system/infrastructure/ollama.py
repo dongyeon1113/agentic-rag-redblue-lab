@@ -45,6 +45,7 @@ class OllamaChatModel:
         base_url: str,
         temperature: float = 0.0,
         num_predict: int = 1024,
+        num_ctx: int | None = None,
         think: bool = True,
         timeout_seconds: float = 120.0,
         http_client: httpx.AsyncClient | None = None,
@@ -53,6 +54,7 @@ class OllamaChatModel:
         self.base_url = base_url.rstrip("/")
         self._temperature = temperature
         self._num_predict = num_predict
+        self._num_ctx = num_ctx
         self._think = think
         self._owns_client = http_client is None
         self._http = http_client or httpx.AsyncClient(timeout=timeout_seconds)
@@ -77,6 +79,7 @@ class OllamaChatModel:
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, Any] | str | None = None,
         think: bool | None = None,
+        temperature: float | None = None,
     ) -> OllamaMessage:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -84,10 +87,14 @@ class OllamaChatModel:
             "stream": False,
             "think": self._think if think is None else think,
             "options": {
-                "temperature": self._temperature,
+                "temperature": (
+                    self._temperature if temperature is None else temperature
+                ),
                 "num_predict": self._num_predict,
             },
         }
+        if self._num_ctx is not None:
+            payload["options"]["num_ctx"] = self._num_ctx
         if tools:
             payload["tools"] = tools
         if response_format is not None:
@@ -122,5 +129,6 @@ class OllamaChatModel:
             messages,
             response_format=output_schema.model_json_schema(),
             think=False,
+            temperature=0.0,
         )
         return output_schema.model_validate_json(response.content)

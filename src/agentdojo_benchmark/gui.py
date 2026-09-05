@@ -33,6 +33,9 @@ class RunRequest(BaseModel):
     suite: str
     user_task: str | None = None
     injection_task: str | None = None
+    benign_only: bool = False
+    baseline_success_only: bool = False
+    baseline_source_job: str | None = None
     attack: str = "important_instructions"
     benchmark_version: str = DEFAULT_VERSION
     force_rerun: bool = True
@@ -115,6 +118,9 @@ def _trace_view(payload: dict[str, Any] | None) -> dict[str, Any] | None:
     assistant_messages = [
         item for item in messages if item.get("role") == "assistant"
     ]
+    current_agent = payload.get("current_agent")
+    if not isinstance(current_agent, dict):
+        current_agent = {}
     calls: list[dict[str, Any]] = []
     for message in assistant_messages:
         for call in message.get("tool_calls") or []:
@@ -123,10 +129,25 @@ def _trace_view(payload: dict[str, Any] | None) -> dict[str, Any] | None:
                 "function": call.get("function", ""),
                 "args": call.get("args", {}),
             })
+    tool_results: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        call = message.get("tool_call") or {}
+        tool_results.append({
+            "sequence": len(tool_results) + 1,
+            "function": call.get("function", ""),
+            "output": _text(message),
+            "error": message.get("error"),
+        })
     return {
         "query": _text(user_message),
         "answer": "\n".join(_text(item) for item in assistant_messages).strip(),
         "tool_calls": calls,
+        "tool_results": tool_results,
+        "defense_profile": current_agent.get("defense_profile"),
+        "defense_config": current_agent.get("defense_config", {}),
+        "defense_report": current_agent.get("defense_report", {}),
         "utility": payload.get("utility"),
         "attack_succeeded": (
             payload.get("security")
@@ -164,6 +185,63 @@ def _case_key(payload: dict[str, Any]) -> tuple[str, str, str, str, str]:
         str(payload.get("attack_type") or "none"),
         str(payload.get("injection_task_id") or "none"),
     )
+
+
+def _baseline_success_tasks(
+    job_id: str,
+    version: str,
+) -> dict[str, tuple[str, ...]]:
+    if not job_id.startswith("agentdojo-") or "/" in job_id or "\\" in job_id:
+        raise HTTPException(status_code=422, detail="Invalid baseline source job")
+    source_request = _read_json(_job_dir(job_id) / "request.json", {})
+    if source_request.get("benchmark_version") != version:
+        raise HTTPException(
+            status_code=422,
+            detail="Baseline source benchmark version does not match this run",
+        )
+    checkpoint = _read_json(_job_dir(job_id) / "checkpoint.json", {})
+    baseline = checkpoint.get("reports", {}).get("baseline", {})
+    suites_report = (
+        baseline.get("profiles", {})
+        .get("baseline", {})
+        .get("suites", {})
+    )
+    if not suites_report:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected job has no completed baseline profile",
+        )
+
+    catalog_suites = get_suites(version)
+    selected: dict[str, tuple[str, ...]] = {}
+    for suite_name, suite_report in suites_report.items():
+        if suite_name not in catalog_suites:
+            continue
+        utility_results = (
+            suite_report.get("benign", {}).get("utility_results", {})
+        )
+        successful = {
+            key.split("::", 1)[0]
+            for key, passed in utility_results.items()
+            if passed is True
+        }
+        ordered = tuple(
+            task_id
+            for task_id in catalog_suites[suite_name].user_tasks
+            if task_id in successful
+        )
+        if ordered:
+            selected[suite_name] = ordered
+    if not selected:
+        raise HTTPException(
+            status_code=422,
+            detail="Baseline source has no successful benign UserTasks",
+        )
+    return selected
+
+
+def _eligible_task_snapshot(job_id: str) -> Path:
+    return _job_dir(job_id) / "eligible-user-tasks.json"
 
 
 def _catalog_task(version: str, suite_name: str, task_id: str, kind: str) -> Any:
@@ -214,6 +292,34 @@ async def catalog(version: str = DEFAULT_VERSION) -> dict[str, Any]:
             for name, suite in suites.items()
         },
     }
+
+
+@app.get("/api/baseline-success-sources")
+async def baseline_success_sources(
+    version: str = DEFAULT_VERSION,
+) -> dict[str, Any]:
+    sources: list[dict[str, Any]] = []
+    if _job_root().is_dir():
+        for directory in _job_root().iterdir():
+            if not directory.is_dir():
+                continue
+            try:
+                selected = _baseline_success_tasks(directory.name, version)
+            except HTTPException:
+                continue
+            state = _read_json(directory / "state.json", {})
+            sources.append({
+                "job_id": directory.name,
+                "status": state.get("status"),
+                "created_at": state.get("created_at"),
+                "suites": {
+                    suite: list(task_ids)
+                    for suite, task_ids in selected.items()
+                },
+                "total": sum(len(task_ids) for task_ids in selected.values()),
+            })
+    sources.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return {"sources": sources}
 
 
 @app.get("/api/cases")
@@ -288,6 +394,16 @@ async def _execute_job(job_id: str, request: RunRequest) -> None:
     checkpoint = _read_json(checkpoint_path, {"completed_profiles": [], "reports": {}})
     completed = set(checkpoint.get("completed_profiles", []))
     cancel_event = JOB_CANCEL_EVENTS[job_id]
+    user_tasks_by_suite: dict[str, tuple[str, ...]] | None = None
+    if request.baseline_success_only:
+        snapshot = _read_json(_eligible_task_snapshot(job_id), {})
+        if not isinstance(snapshot, dict) or not snapshot:
+            raise RuntimeError("Baseline-success UserTask snapshot is missing")
+        user_tasks_by_suite = {
+            suite: tuple(str(task_id) for task_id in task_ids)
+            for suite, task_ids in snapshot.items()
+            if isinstance(task_ids, list) and task_ids
+        }
     _update_job(job_id, status="running", error=None)
     try:
         for profile in request.defense_profiles:
@@ -309,15 +425,18 @@ async def _execute_job(job_id: str, request: RunRequest) -> None:
                         attack=request.attack,
                         benchmark_version=request.benchmark_version,
                         user_tasks=((request.user_task,) if request.user_task else ()),
+                        user_tasks_by_suite=user_tasks_by_suite,
                         injection_tasks=(
-                            (request.injection_task,) if request.injection_task else ()
+                            (request.injection_task,)
+                            if request.injection_task and not request.benign_only
+                            else ()
                         ),
                         output_dir=_job_dir(job_id) / "results",
                         # Every job has a unique result directory. Reusing valid
                         # traces lets a failed profile resume at task granularity.
                         force_rerun=False,
                         include_benign=True,
-                        include_attack=True,
+                        include_attack=not request.benign_only,
                         defense_profiles=(profile,),
                     ),
                 )
@@ -354,6 +473,31 @@ def _schedule_job(job_id: str, request: RunRequest) -> None:
 
 @app.post("/api/runs", status_code=202)
 async def start_run(request: RunRequest) -> dict[str, Any]:
+    if request.benign_only and request.baseline_success_only:
+        raise HTTPException(
+            status_code=422,
+            detail="Baseline-success defense mode already includes benign evaluation",
+        )
+    if request.baseline_success_only and not request.baseline_source_job:
+        raise HTTPException(
+            status_code=422,
+            detail="A completed baseline source job is required",
+        )
+    if request.baseline_success_only and request.user_task:
+        raise HTTPException(
+            status_code=422,
+            detail="A single UserTask cannot be combined with baseline-success mode",
+        )
+    if request.baseline_source_job and not request.baseline_success_only:
+        raise HTTPException(
+            status_code=422,
+            detail="Baseline source job requires baseline-success mode",
+        )
+    if request.benign_only and request.injection_task:
+        raise HTTPException(
+            status_code=422,
+            detail="Injection task cannot be used in utility-only mode",
+        )
     if request.suite != "all":
         if request.user_task:
             _catalog_task(
@@ -370,7 +514,10 @@ async def start_run(request: RunRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=422, detail="Task filters cannot be used with suite=all"
         )
-    if request.attack not in ATTACKS or request.attack == "manual":
+    if (
+        not request.benign_only
+        and (request.attack not in ATTACKS or request.attack == "manual")
+    ):
         raise HTTPException(status_code=422, detail="Unknown or interactive attack")
     if not request.defense_profiles:
         raise HTTPException(status_code=422, detail="At least one defense combination is required")
@@ -381,7 +528,42 @@ async def start_run(request: RunRequest) -> dict[str, Any]:
             defense_config(profile)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    eligible_user_tasks: dict[str, tuple[str, ...]] | None = None
+    if request.baseline_success_only:
+        eligible_user_tasks = _baseline_success_tasks(
+            str(request.baseline_source_job),
+            request.benchmark_version,
+        )
+        requested_suites = (
+            {"workspace", "slack", "travel", "banking"}
+            if request.suite == "all"
+            else {request.suite}
+        )
+        eligible_user_tasks = {
+            suite: task_ids
+            for suite, task_ids in eligible_user_tasks.items()
+            if suite in requested_suites
+        }
+        if not eligible_user_tasks:
+            raise HTTPException(
+                status_code=422,
+                detail="No successful baseline UserTasks match the selected suite",
+            )
+
     job_id = f"agentdojo-{uuid4().hex[:12]}"
+    selection = (
+        {
+            "mode": "baseline_success_only",
+            "source_job": request.baseline_source_job,
+            "total": sum(len(ids) for ids in eligible_user_tasks.values()),
+            "suites": {
+                suite: list(ids)
+                for suite, ids in eligible_user_tasks.items()
+            },
+        }
+        if eligible_user_tasks is not None
+        else None
+    )
     state = {
         "job_id": job_id,
         "status": "queued",
@@ -391,8 +573,17 @@ async def start_run(request: RunRequest) -> dict[str, Any]:
         "total": len(request.defense_profiles),
         "current": None,
         "request": request.model_dump(mode="json"),
+        "selection": selection,
     }
     _write_json_atomic(_job_dir(job_id) / "request.json", state["request"])
+    if eligible_user_tasks is not None:
+        _write_json_atomic(
+            _eligible_task_snapshot(job_id),
+            {
+                suite: list(task_ids)
+                for suite, task_ids in eligible_user_tasks.items()
+            },
+        )
     _write_json_atomic(_job_dir(job_id) / "checkpoint.json", {
         "completed_profiles": [], "reports": {}
     })

@@ -27,7 +27,13 @@ from agent_system.ports.executors import ExecutorRegistry
 from agent_system.ports.memory import ConversationTurn, MemoryItem
 from agent_system.security.ports import AgentGuard
 from agent_system.tool_runtime.policies import resource_digest
-from defense import DefenseConfig, DefenseFinding, DefensePipeline, DefenseReport
+from defense import (
+    DefenseConfig,
+    DefenseFinding,
+    DefensePipeline,
+    DefenseReport,
+    TaskShieldSession,
+)
 
 
 DEFAULT_READ_PERMISSIONS = {"document:read", "gmail:read", "drive:read"}
@@ -37,6 +43,8 @@ RESOURCE_TERMS = (
     "local db", "로컬 db", "로컬 문서", "문서", "gmail", "메일",
     "이메일", "수신함", "inbox", "drive", "드라이브", "namespace",
     "네임스페이스", "document_id", "message_id", "item_id",
+    "calendar", "event", "file", "slack", "bank", "transaction",
+    "hotel", "restaurant", "flight", "car rental", "website",
 )
 SENSITIVE_TERMS = (
     "password", "passwd", "secret", "credential", "api_key", "api key",
@@ -47,6 +55,8 @@ TOOL_ACTION_TERMS = (
     "알려", "언제", "어디", "누가", "보내", "삭제", "지워", "이동", "옮겨", "생성", "만들",
     "find", "search", "get", "show", "list", "send", "delete", "move",
     "create",
+    "refund", "book", "reserve", "reschedule", "update", "calculate",
+    "total", "recommend", "visit", "post", "invite", "add",
 )
 LOGGER = logging.getLogger(__name__)
 
@@ -115,7 +125,10 @@ class AgentRunState:
     sensitive_data_accessed: bool = False
     routing_retries: int = 0
     empty_response_retries: int = 0
+    completion_check_result_count: int = -1
     defense_report: DefenseReport = field(default_factory=DefenseReport)
+    task_shield_session: TaskShieldSession | None = None
+    taskshield_response_retries: int = 0
 
 
 class PendingRunStore:
@@ -175,6 +188,8 @@ class ToolCallingAgent:
         defense_pipeline: DefensePipeline | None = None,
         max_iterations: int = 8,
         system_prompt: str = BASELINE_SYSTEM_PROMPT,
+        verify_completion: bool = False,
+        taskshield_max_feedback_rounds: int = 2,
     ) -> None:
         self._model = model
         self._executors = executors
@@ -185,6 +200,10 @@ class ToolCallingAgent:
         self._defense = defense_pipeline or DefensePipeline()
         self._max_iterations = max_iterations
         self._system_prompt = system_prompt
+        self._verify_completion = verify_completion
+        self._taskshield_max_feedback_rounds = max(
+            1, taskshield_max_feedback_rounds
+        )
 
     async def run(self, request: AgentQueryRequest) -> AgentRunResponse:
         context = await self._memory.load_context(
@@ -234,6 +253,12 @@ class ToolCallingAgent:
             defense_report=DefenseReport(
                 enabled=self._enabled_defenses(request.defense),
             ),
+        )
+        state.task_shield_session = await self._defense.start_task_shield(
+            workflow_id=state.workflow_id,
+            user_goal=request.query,
+            config=request.defense,
+            report=state.defense_report,
         )
         return await self._continue(state)
 
@@ -312,10 +337,52 @@ class ToolCallingAgent:
                         ),
                     })
                     continue
-                answer = (
+                if (
+                    self._verify_completion
+                    and state.results
+                    and state.completion_check_result_count != len(state.results)
+                ):
+                    state.completion_check_result_count = len(state.results)
+                    state.messages.append({
+                        "role": "system",
+                        "content": (
+                            "Review the candidate answer against every part of the "
+                            "original user request and all tool results. If any requested "
+                            "information or action is incomplete, call the next required "
+                            "tool now. If everything is complete and factually supported, "
+                            "return the full final answer again. Do not describe a future "
+                            "action without actually calling its tool."
+                        ),
+                    })
+                    continue
+                candidate_answer = (
                     message.content.strip()
                     or "The operation completed, but the model returned an empty response."
                 )
+                taskshield_feedback = await self._defense.inspect_response(
+                    session=state.task_shield_session,
+                    workflow_id=state.workflow_id,
+                    response=candidate_answer,
+                    config=state.request.defense,
+                    report=state.defense_report,
+                )
+                if taskshield_feedback:
+                    state.taskshield_response_retries += 1
+                    if (
+                        state.taskshield_response_retries
+                        <= self._taskshield_max_feedback_rounds
+                    ):
+                        state.messages.append({
+                            "role": "system",
+                            "content": taskshield_feedback,
+                        })
+                        continue
+                    answer = (
+                        "Task Shield blocked the response because it did not "
+                        "contribute to the authorized user tasks."
+                    )
+                else:
+                    answer = candidate_answer
                 answer = await self._guard.inspect_response(answer)
                 await self._persist_safe_memory(state, answer)
                 return self._response(
@@ -323,6 +390,7 @@ class ToolCallingAgent:
                 )
 
             tasks = self._tasks_from_calls(state, message)
+            tasks = await self._apply_task_shield(state, tasks)
             tasks = self._block_indirect_actions(state, tasks)
             if not tasks:
                 continue
@@ -471,18 +539,61 @@ class ToolCallingAgent:
             result = await executor.execute(guarded_task, state.principal)
             result = await self._guard.inspect_tool_result(guarded_task, result)
             result, defense_instructions = await self._defense.inspect_result(
-                guarded_task, result, state.request.defense, state.defense_report
+                guarded_task,
+                result,
+                state.request.defense,
+                state.defense_report,
+                task_shield_session=state.task_shield_session,
             )
-            for instruction in defense_instructions:
-                state.messages.append({"role": "system", "content": instruction})
             if self._contains_sensitive_tool_data(guarded_task, result):
                 state.sensitive_data_accessed = True
             state.results.append(result)
             state.messages.append({
                 "role": "tool",
                 "tool_name": tool_name,
-                "content": json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                "content": json.dumps(
+                    result.model_dump(mode="json"), ensure_ascii=False
+                ),
             })
+            for instruction in defense_instructions:
+                state.messages.append({"role": "system", "content": instruction})
+
+    async def _apply_task_shield(
+        self,
+        state: AgentRunState,
+        tasks: list[tuple[str, AgentTask]],
+    ) -> list[tuple[str, AgentTask]]:
+        allowed_tasks: list[tuple[str, AgentTask]] = []
+        for tool_name, task in tasks:
+            allowed, feedback = await self._defense.inspect_tool_call(
+                session=state.task_shield_session,
+                task=task,
+                capability=state.capabilities[tool_name],
+                config=state.request.defense,
+                report=state.defense_report,
+            )
+            if allowed:
+                allowed_tasks.append((tool_name, task))
+                continue
+            result = TaskResult.failed(
+                task.task_id,
+                code="TASKSHIELD_BLOCKED_TOOL_CALL",
+                message=(
+                    "Task Shield blocked a tool call that did not contribute "
+                    "to the authorized user tasks."
+                ),
+            )
+            state.results.append(result)
+            state.messages.append({
+                "role": "tool",
+                "tool_name": tool_name,
+                "content": json.dumps(
+                    result.model_dump(mode="json"), ensure_ascii=False
+                ),
+            })
+            if feedback:
+                state.messages.append({"role": "system", "content": feedback})
+        return allowed_tasks
 
     def _block_indirect_actions(
         self,
@@ -526,6 +637,7 @@ class ToolCallingAgent:
         return [
             *(["regex"] if config.regex_filter else []),
             *(["prompt_guard"] if config.prompt_guard else []),
+            *(["task_shield"] if config.task_shield else []),
             *(["ragpart"] if config.ragpart else []),
             *(f"spotlighting:{method}" for method in config.spotlighting),
             *(["indirect_action_guard"] if config.block_indirect_actions else []),

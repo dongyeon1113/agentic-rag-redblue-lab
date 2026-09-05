@@ -14,8 +14,21 @@ from defense.spotlighting import SimplifiedSpotlighting
 
 _RECORD_LIST_KEYS = ("documents", "messages", "items")
 _RECORD_KEYS = ("document", "message", "item")
-_TEXT_KEYS = ("content", "body", "text")
-_ID_KEYS = ("document_id", "message_id", "item_id")
+_TEXT_KEYS = frozenset({
+    "body",
+    "content",
+    "description",
+    "message",
+    "messages",
+    "review",
+    "reviews",
+    "snippet",
+    "subject",
+    "text",
+    "title",
+    "web_content",
+})
+_ID_KEYS = ("document_id", "message_id", "item_id", "id_", "id")
 
 
 class DefensePipeline:
@@ -51,17 +64,24 @@ class DefensePipeline:
                 report,
             )
 
+        # Reuse one marker/delimiter per tool result. This keeps the boundary
+        # instruction stable and prevents one system message per record.
+        spotlighters = {
+            method: SimplifiedSpotlighting(method)
+            for method in dict.fromkeys(config.spotlighting)
+        }
         kept: list[dict[str, Any]] = []
         for index, record in enumerate(records):
             report.inspected_records += 1
             record_id = self._record_id(record, index)
-            text_key, text = self._record_text(record)
+            _, text = self._record_text(record)
             trust = str(record.get("metadata", {}).get("trust", "unknown")).casefold()
+            explicitly_trusted = trust == "trusted"
             if trust == "untrusted":
                 report.untrusted_data_seen = True
 
             blocked = False
-            if config.regex_filter:
+            if not explicitly_trusted and text and config.regex_filter:
                 started = perf_counter()
                 finding = self._regex.inspect(text)
                 report.detector_latency_ms += (perf_counter() - started) * 1000
@@ -74,7 +94,12 @@ class DefensePipeline:
                         reason=", ".join(match.rule_name for match in finding.matches),
                     ))
 
-            if not blocked and config.prompt_guard:
+            if (
+                not explicitly_trusted
+                and text
+                and not blocked
+                and config.prompt_guard
+            ):
                 if self._prompt_guard is None:
                     raise RuntimeError(
                         "Prompt Guard is enabled but no detector is configured. "
@@ -96,21 +121,22 @@ class DefensePipeline:
                 report.blocked_records += 1
                 continue
 
-            transformed = text
-            for method in config.spotlighting:
-                spotlighted = SimplifiedSpotlighting(method).apply(transformed)
-                transformed = spotlighted.transformed_document
-                instructions.append(spotlighted.system_instruction)
-                report.transformed_records += 1
-                report.findings.append(DefenseFinding(
-                    defense=f"spotlighting:{method}",
-                    record_id=record_id,
-                    action="transformed",
-                    reason="Untrusted retrieval content was spotlighted.",
-                    metadata=spotlighted.metadata,
-                ))
-            if text_key is not None:
-                record[text_key] = transformed
+            if not explicitly_trusted:
+                for method, spotlighter in spotlighters.items():
+                    record, spotlighted = self._spotlight_record(record, spotlighter)
+                    if not spotlighted:
+                        continue
+                    instructions.append(spotlighted[0].system_instruction)
+                    report.transformed_records += 1
+                    metadata = dict(spotlighted[0].metadata)
+                    metadata["transformed_fields"] = len(spotlighted)
+                    report.findings.append(DefenseFinding(
+                        defense=f"spotlighting:{method}",
+                        record_id=record_id,
+                        action="transformed",
+                        reason="Untrusted retrieval content was spotlighted.",
+                        metadata=metadata,
+                    ))
             kept.append(record)
 
         if container_key is not None:
@@ -182,13 +208,84 @@ class DefensePipeline:
                 return [value], key, True
         return [], None, False
 
-    @staticmethod
-    def _record_text(record: dict[str, Any]) -> tuple[str | None, str]:
-        for key in _TEXT_KEYS:
-            value = record.get(key)
-            if isinstance(value, str):
-                return key, value
-        return None, ""
+    @classmethod
+    def _record_text(cls, record: dict[str, Any]) -> tuple[str | None, str]:
+        return None, "\n".join(cls._all_strings(record))
+
+    @classmethod
+    def _all_strings(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [
+                text
+                for item in value
+                for text in cls._all_strings(item)
+            ]
+        if isinstance(value, dict):
+            return [
+                text
+                for key, item in value.items()
+                if str(key).casefold() != "metadata"
+                for text in cls._all_strings(item)
+            ]
+        return []
+
+    @classmethod
+    def _spotlight_record(
+        cls,
+        record: dict[str, Any],
+        spotlighter: SimplifiedSpotlighting,
+    ) -> tuple[dict[str, Any], list[Any]]:
+        transformed, results = cls._spotlight_value(
+            record,
+            spotlighter,
+            content_field=False,
+        )
+        return transformed, results
+
+    @classmethod
+    def _spotlight_value(
+        cls,
+        value: Any,
+        spotlighter: SimplifiedSpotlighting,
+        *,
+        content_field: bool,
+    ) -> tuple[Any, list[Any]]:
+        if isinstance(value, str):
+            if not content_field:
+                return value, []
+            result = spotlighter.apply(value)
+            return result.transformed_document, [result]
+        if isinstance(value, list):
+            transformed: list[Any] = []
+            results: list[Any] = []
+            for item in value:
+                current, current_results = cls._spotlight_value(
+                    item,
+                    spotlighter,
+                    content_field=content_field,
+                )
+                transformed.append(current)
+                results.extend(current_results)
+            return transformed, results
+        if isinstance(value, dict):
+            transformed_dict: dict[str, Any] = {}
+            results = []
+            for key, item in value.items():
+                key_name = str(key).casefold()
+                if key_name == "metadata":
+                    transformed_dict[key] = item
+                    continue
+                current, current_results = cls._spotlight_value(
+                    item,
+                    spotlighter,
+                    content_field=content_field or key_name in _TEXT_KEYS,
+                )
+                transformed_dict[key] = current
+                results.extend(current_results)
+            return transformed_dict, results
+        return value, []
 
     @staticmethod
     def _record_id(record: dict[str, Any], index: int) -> str:

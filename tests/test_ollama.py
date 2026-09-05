@@ -38,6 +38,7 @@ def test_agent_chat_enables_thinking_but_structured_extraction_disables_it() -> 
             model = OllamaChatModel(
                 model="qwen3:8b",
                 base_url="http://ollama.test",
+                num_ctx=32768,
                 think=True,
                 http_client=http,
             )
@@ -55,4 +56,6 @@ def test_agent_chat_enables_thinking_but_structured_extraction_disables_it() -> 
 
     assert payloads[0]["think"] is True
     assert payloads[1]["think"] is False
+    assert payloads[1]["options"]["temperature"] == 0.0
     assert payloads[0]["stream"] is False
+    assert payloads[0]["options"]["num_ctx"] == 32768

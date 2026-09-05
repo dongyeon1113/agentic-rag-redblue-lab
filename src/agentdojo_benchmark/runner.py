@@ -32,6 +32,7 @@ class BenchmarkOptions:
     attack: str = "important_instructions"
     benchmark_version: str = "v1.2.2"
     user_tasks: tuple[str, ...] = ()
+    user_tasks_by_suite: dict[str, tuple[str, ...]] | None = None
     injection_tasks: tuple[str, ...] = ()
     output_dir: Path = Path("runs/agentdojo")
     force_rerun: bool = False
@@ -43,6 +44,7 @@ class BenchmarkOptions:
 DEFENSE_COMPONENTS = (
     "regex",
     "prompt_guard",
+    "task_shield",
     "spotlighting:delimiting",
     "spotlighting:datamarking",
     "spotlighting:encoding",
@@ -61,9 +63,11 @@ DEFENSE_PROFILES = {
         spotlighting=["encoding"], block_indirect_actions=False
     ),
     "prompt_guard": DefenseConfig(prompt_guard=True, block_indirect_actions=False),
+    "task_shield": DefenseConfig(task_shield=True, block_indirect_actions=False),
     "all": DefenseConfig(
         regex_filter=True,
         prompt_guard=True,
+        task_shield=True,
         spotlighting=["delimiting"],
         block_indirect_actions=False,
     ),
@@ -88,6 +92,7 @@ def defense_config(profile: str) -> DefenseConfig:
     return DefenseConfig(
         regex_filter="regex" in components,
         prompt_guard="prompt_guard" in components,
+        task_shield="task_shield" in components,
         spotlighting=spotlighting,
         block_indirect_actions=False,
     )
@@ -148,8 +153,19 @@ def run_benchmark(
     unknown = set(options.suites) - set(available_suites)
     if unknown:
         raise ValueError(f"Unknown suites: {', '.join(sorted(unknown))}")
+    if options.user_tasks and options.user_tasks_by_suite is not None:
+        raise ValueError("Use either user_tasks or user_tasks_by_suite, not both")
     if options.user_tasks and len(options.suites) != 1:
         raise ValueError("--user-task can only be used with one suite")
+    if options.user_tasks_by_suite is not None:
+        unknown_selection_suites = (
+            set(options.user_tasks_by_suite) - set(options.suites)
+        )
+        if unknown_selection_suites:
+            raise ValueError(
+                "User-task selection contains suites outside this run: "
+                + ", ".join(sorted(unknown_selection_suites))
+            )
     if options.injection_tasks and len(options.suites) != 1:
         raise ValueError("--injection-task can only be used with one suite")
 
@@ -162,6 +178,14 @@ def run_benchmark(
         "all_tool_permissions": True,
         "approvals_required": False,
         "defense_profiles": list(options.defense_profiles),
+        "user_task_selection": (
+            {
+                suite: list(task_ids)
+                for suite, task_ids in options.user_tasks_by_suite.items()
+            }
+            if options.user_tasks_by_suite is not None
+            else None
+        ),
         "profiles": {},
     }
 
@@ -178,6 +202,16 @@ def run_benchmark(
         }
         with OutputLogger(str(profile_dir)):
             for suite_name in options.suites:
+                selected_user_tasks: tuple[str, ...] | None = (
+                    options.user_tasks or None
+                )
+                if options.user_tasks_by_suite is not None:
+                    selected_user_tasks = options.user_tasks_by_suite.get(
+                        suite_name,
+                        (),
+                    )
+                    if not selected_user_tasks:
+                        continue
                 suite = get_suite(options.benchmark_version, suite_name)
                 suite_report: dict[str, Any] = {}
                 if options.include_benign:
@@ -186,7 +220,7 @@ def run_benchmark(
                         suite,
                         logdir=profile_dir,
                         force_rerun=options.force_rerun,
-                        user_tasks=options.user_tasks or None,
+                        user_tasks=selected_user_tasks,
                         benchmark_version=options.benchmark_version,
                     )
                     suite_report["benign_utility"] = _rate(benign["utility_results"])
@@ -199,7 +233,7 @@ def run_benchmark(
                         attack,
                         logdir=profile_dir,
                         force_rerun=options.force_rerun,
-                        user_tasks=options.user_tasks or None,
+                        user_tasks=selected_user_tasks,
                         injection_tasks=options.injection_tasks or None,
                         verbose=False,
                         benchmark_version=options.benchmark_version,

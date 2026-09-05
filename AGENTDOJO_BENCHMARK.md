@@ -1,7 +1,7 @@
 # AgentDojo Benchmark
 
 이 경로는 현재 `ToolCallingAgent`를 AgentDojo 공식 환경에서 평가하며,
-`src/defense`의 Regex, Prompt Guard, Spotlighting을 선택적으로 비교합니다.
+`src/defense`의 Regex, Prompt Guard, TaskShield, Spotlighting을 선택적으로 비교합니다.
 
 ## 실험 조건
 
@@ -36,11 +36,19 @@ AgentDojo의 다중 도구 호출에서는 thinking이 짧은 출력 예산을 �
 ```dotenv
 AGENTDOJO_OLLAMA_THINK=false
 AGENTDOJO_OLLAMA_NUM_PREDICT=1024
+AGENTDOJO_OLLAMA_NUM_CTX=32768
 AGENTDOJO_REQUEST_TIMEOUT_SECONDS=300
+AGENTDOJO_MAX_TOOL_ITERATIONS=24
 ```
 
 프로젝트 `.env`에서 값을 바꿀 수 있습니다. 일반 에이전트의 `OLLAMA_THINK`와
 `OLLAMA_NUM_PREDICT`, `REQUEST_TIMEOUT_SECONDS` 설정에는 영향을 주지 않습니다.
+AgentDojo 전용 시스템 프롬프트는 다중 과업 체크리스트, ID 사전 조회, 제약 검증,
+쓰기 결과 확인을 지시합니다. 도구 실행 뒤 모델이 답변을 내면 한 차례 완료 검증을
+수행해 누락된 작업은 계속 호출하고, 완료된 경우에만 최종 답변을 확정합니다.
+파일 목록처럼 큰 도구 결과에서도 원래 사용자 목표가 컨텍스트에서 잘리지 않도록
+벤치마크에만 32K 컨텍스트를 사용합니다. 모델 자체와 일반 에이전트 설정은 바뀌지
+않습니다.
 
 작은 smoke run:
 
@@ -74,11 +82,12 @@ agentdojo-benchmark \
   --defense baseline \
   --defense regex \
   --defense spotlighting:delimiting \
-  --defense prompt_guard
+  --defense prompt_guard \
+  --defense task_shield
 ```
 
 지원 프로필은 `baseline`, `regex`, `spotlighting:delimiting`,
-`spotlighting:datamarking`, `spotlighting:encoding`, `prompt_guard`, `all`입니다.
+`spotlighting:datamarking`, `spotlighting:encoding`, `prompt_guard`, `task_shield`, `all`입니다.
 각 프로필은 별도 출력 디렉터리와 pipeline 이름을 사용하므로 AgentDojo 캐시가
 서로 섞이지 않습니다. AgentDojo 읽기 도구 결과는 `items`/`item` 레코드로
 정규화하고 `metadata.trust=untrusted`로 표시한 뒤 방어 파이프라인에 전달합니다.
@@ -130,13 +139,18 @@ agentdojo-benchmark-gui
 - AgentDojo 사용자 쿼리와 공격 목표
 - 외부 데이터에 삽입된 실제 공격 문자열과 injection vector
 - 정상 실행 및 공격 실행의 최종 답변
-- 순서가 보존된 도구 이름과 호출 인수
+- 순서가 보존된 도구 이름, 호출 인수, 실행 결과와 오류
 - utility, targeted attack success, 실행시간
 
 화면 상단에서 전체 또는 단일 suite/태스크와 여러 방어 프로필을 골라 서버 작업을
 생성할 수 있습니다. HTTP 요청은 작업 생성 직후 끝나며 벤치마크는 서버 프로세스의
 백그라운드 task에서 계속됩니다. 브라우저나 SSH 연결이 끊겨도 서버 프로세스가
 살아 있으면 실행은 계속됩니다.
+
+`실행 범위`에서 `Utility만 (Injection 없음)`을 선택하고 Suite를 `all`, User
+task를 `전체 user tasks`로 두면 네 suite의 모든 정상 UserTask만 실행합니다.
+이 모드에서는 Injection task와 Attack 선택이 비활성화되고 공격 조합은 생성되지
+않습니다.
 
 작업별 파일은 `runs/agentdojo/jobs/<job-id>/`에 저장됩니다.
 
@@ -152,7 +166,7 @@ AgentDojo 프로필 실행이 끝난 경계에서 반영됩니다.
 
 ### GUI 방어 조합
 
-GUI의 체크박스에서 Regex, Prompt Guard, Spotlighting을 골라 `선택 조합 추가`를
+GUI의 체크박스에서 Regex, Prompt Guard, Task Shield, Spotlighting을 골라 `선택 조합 추가`를
 누르면 하나의 비교 조합이 생성됩니다. Spotlighting을 선택한 경우 delimiting,
 datamarking, encoding 중 한 방식을 지정합니다. 예를 들면 다음 조합들을 한 작업에
 동시에 추가할 수 있습니다.
@@ -160,10 +174,16 @@ datamarking, encoding 중 한 방식을 지정합니다. 예를 들면 다음 �
 ```text
 baseline
 regex
+task_shield
+regex+task_shield
 regex+prompt_guard
 regex+spotlighting:delimiting
 regex+prompt_guard+spotlighting:encoding
 ```
+
+새로 실행한 TaskShield trace의 상세 화면에는 검사 수, 차단된 호출, 비정렬 지시,
+피드백, checker 실패 수와 추출된 사용자 task가 표시됩니다. 기존 trace에는 해당
+계측 정보가 없으므로 다시 실행해야 표시됩니다.
 
 `정상 + 공격 실행`을 누르면 생성 목록의 각 조합을 독립된 pipeline과 결과
 디렉터리로 순차 실행합니다. 진행률의 전체 개수는 생성된 조합 수이며, 중단·재개 시

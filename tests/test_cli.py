@@ -90,6 +90,7 @@ def test_api_rejects_client_permissions_and_injects_server_policy(tmp_path) -> N
         AgentSettings.from_env(),
         agent_permissions=frozenset({"document:read", "gmail:send"}),
         memory_data_dir=str(tmp_path),
+        taskshield_enabled=True,
     )
     app = create_app(agent=agent, settings=settings)
 
@@ -110,6 +111,7 @@ def test_api_rejects_client_permissions_and_injects_server_policy(tmp_path) -> N
     assert rejected.status_code == 422
     assert accepted.status_code == 200
     assert agent.request.permissions == {"document:read", "gmail:send"}
+    assert agent.request.defense.task_shield is True
     assert listed.json() == ["document:read", "gmail:send"]
 
 

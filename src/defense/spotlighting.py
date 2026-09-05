@@ -60,6 +60,12 @@ class SimplifiedSpotlighting:
         self.dynamic = dynamic
         self.marking_probability = marking_probability
         self._random = random.Random(seed)
+        self._delimiter_suffix = secrets.token_hex(4) if dynamic else None
+        self._marker = (
+            chr(self._random.randint(self._PRIVATE_USE_START, self._PRIVATE_USE_END))
+            if dynamic
+            else chr(self._PRIVATE_USE_START)
+        )
 
     def apply(self, document: str) -> SpotlightingResult:
         """Apply the configured transformation to one retrieved document."""
@@ -173,16 +179,10 @@ class SimplifiedSpotlighting:
     def _build_delimiter(self, prefix: str) -> str:
         if not self.dynamic:
             return prefix
-        return f"{prefix}_{secrets.token_hex(4)}"
+        return f"{prefix}_{self._delimiter_suffix}"
 
     def _select_marker(self) -> str:
-        if not self.dynamic:
-            return chr(self._PRIVATE_USE_START)
-        codepoint = self._random.randint(
-            self._PRIVATE_USE_START,
-            self._PRIVATE_USE_END,
-        )
-        return chr(codepoint)
+        return self._marker
 
     def _insert_marker_at_word_boundaries(
         self,

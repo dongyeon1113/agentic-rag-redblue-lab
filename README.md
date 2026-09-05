@@ -22,7 +22,8 @@ Orchestrator :8000
 - `infrastructure/`: HTTP 클라이언트 및 메모리 어댑터
 - `tool_runtime/`: 세 도구 서비스가 공유하는 실행·권한·승인 런타임
 - `services/`: Local DB, Gmail, Drive 도구와 FastAPI 앱
-- `security/`: 향후 TaskShield를 연결할 `AgentGuard` 경계
+- `security/`: 권한·승인용 `AgentGuard` 경계
+- `defense/`: TaskShield와 검색 결과 방어 파이프라인
 
 ## Current scope
 
@@ -74,7 +75,7 @@ agent-cli --base-url http://localhost:19000 --user-id user-1
 ## AgentDojo benchmark
 
 `ToolCallingAgent` 자체를 AgentDojo 공식 suite에서 평가할 수 있습니다. 모든 suite
-도구 권한을 부여한 격리 환경에서 baseline과 Regex, Prompt Guard, Spotlighting
+도구 권한을 부여한 격리 환경에서 baseline과 TaskShield, Regex, Prompt Guard, Spotlighting
 프로필의 benign utility, utility under attack, targeted ASR을 비교합니다. GUI는
 파일 기반 서버 작업, 진행 조회, 중단·재개와 결과 다운로드를 지원합니다. 설치와
 실행 방법은 `AGENTDOJO_BENCHMARK.md`를 참고하십시오.

@@ -18,7 +18,7 @@ class ApprovalVerifier(Protocol):
 
 
 class AgentGuard(Protocol):
-    """Hook points for a later TaskShield implementation."""
+    """Application-level policy hooks composed with the defense pipeline."""
 
     async def inspect_tool_call(self, task: AgentTask) -> AgentTask: ...
 

@@ -77,6 +77,10 @@ class AgentSettings:
     auto_memory_enabled: bool
     auto_memory_min_confidence: float
     auto_memory_max_items: int
+    taskshield_enabled: bool = False
+    taskshield_threshold: float = 0.0
+    taskshield_fail_closed: bool = True
+    taskshield_max_feedback_rounds: int = 2
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -121,5 +125,11 @@ class AgentSettings:
                 "AUTO_MEMORY_MIN_CONFIDENCE", 0.8
             ),
             auto_memory_max_items=_integer("AUTO_MEMORY_MAX_ITEMS", 3),
+            taskshield_enabled=_boolean("TASKSHIELD_ENABLED", False),
+            taskshield_threshold=_floating("TASKSHIELD_THRESHOLD", 0.0),
+            taskshield_fail_closed=_boolean("TASKSHIELD_FAIL_CLOSED", True),
+            taskshield_max_feedback_rounds=_integer(
+                "TASKSHIELD_MAX_FEEDBACK_ROUNDS", 2
+            ),
         )
 
