@@ -15,7 +15,12 @@ def load_scenarios(path: Path) -> list[dict[str, Any]]:
     if path.suffix == ".jsonl":
         with path.open(encoding="utf-8") as source:
             values = [json.loads(line) for line in source if line.strip()]
-        return [item for item in values if item.get("status", "accepted") == "accepted"]
+        return [
+            item
+            for item in values
+            if item.get("status", "accepted") == "accepted"
+            and item.get("baseline_valid", True) is True
+        ]
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, list):
         raise ValueError("scenario file must contain a JSON list or JSONL records")
